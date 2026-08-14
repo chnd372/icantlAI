@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
 import {
+  Check,
+  ChevronDown,
   Loader2,
   Pencil,
   Plus,
@@ -82,6 +84,16 @@ export function ProvidersDialog({
   const [loadingModels, setLoadingModels] = useState(false);
   const [modelError, setModelError] = useState<string | null>(null);
 
+  // Provider list: which row's model list is expanded, which provider is
+  // having its active model changed or its model list (re)loaded.
+  const [expandedId, setExpandedId] = useState<Id<"aiProviders"> | null>(null);
+  const [settingModelId, setSettingModelId] = useState<Id<"aiProviders"> | null>(
+    null,
+  );
+  const [loadingModelsFor, setLoadingModelsFor] = useState<Id<"aiProviders"> | null>(
+    null,
+  );
+
   const openAdd = () => {
     setEditingId(null);
     setForm(EMPTY_FORM);
@@ -138,7 +150,7 @@ export function ProvidersDialog({
     if (saving) return;
     setSaving(true);
     try {
-      await saveProvider({
+      const id = await saveProvider({
         providerId: editingId ?? undefined,
         name: form.name,
         providerType: form.providerType,
@@ -153,6 +165,8 @@ export function ProvidersDialog({
       setForm(EMPTY_FORM);
       setModels([]);
       setModelError(null);
+      // Drop straight into the list with the models visible.
+      setExpandedId(id);
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Could not save the provider.",
@@ -179,6 +193,76 @@ export function ProvidersDialog({
       );
     } finally {
       setTestingId(null);
+    }
+  };
+
+  /**
+   * Pick the model used for this provider straight from the provider list.
+   * Pass `undefined` to clear the fixed model and auto-pick at translate time.
+   */
+  const handleSetModel = async (
+    id: Id<"aiProviders">,
+    modelId: string | undefined,
+  ) => {
+    if (settingModelId) return;
+    const p = providers?.find((x) => x._id === id);
+    if (!p) return;
+    setSettingModelId(id);
+    try {
+      await saveProvider({
+        providerId: id,
+        name: p.name,
+        providerType: p.providerType,
+        baseUrl: p.baseUrl,
+        apiKey: "", // blank keeps the stored key
+        modelId,
+        models: p.models,
+      });
+      toast.success(
+        modelId
+          ? `Model set to ${modelId}.`
+          : "Any model — one will be picked automatically when translating.",
+      );
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Could not update the model.",
+      );
+    } finally {
+      setSettingModelId(null);
+    }
+  };
+
+  /** Fetch the model list for a saved provider and store it. */
+  const handleLoadModelsForProvider = async (
+    p: NonNullable<typeof providers>[number],
+  ) => {
+    if (loadingModelsFor) return;
+    setLoadingModelsFor(p._id);
+    try {
+      const result = await listProviderModelsAction({ providerId: p._id });
+      await saveProvider({
+        providerId: p._id,
+        name: p.name,
+        providerType: p.providerType,
+        baseUrl: p.baseUrl,
+        apiKey: "", // blank keeps the stored key
+        modelId: p.modelId ?? undefined,
+        models: result,
+      });
+      setExpandedId(p._id);
+      if (result.length === 0) {
+        toast.error("No models found at this base URL.");
+      } else {
+        toast.success(
+          `${result.length} model${result.length === 1 ? "" : "s"} loaded from this base URL.`,
+        );
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Could not load models.",
+      );
+    } finally {
+      setLoadingModelsFor(null);
     }
   };
 
@@ -360,70 +444,184 @@ export function ProvidersDialog({
           </>
         ) : (
           <>
-            <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+            <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
               {providers && providers.length === 0 ? (
                 <p className="border-y border-border/70 py-8 text-center text-xs text-muted-foreground">
                   No custom providers yet. Add one to translate with any model
                   you like.
                 </p>
               ) : (
-                providers?.map((p) => (
-                  <div
-                    key={p._id}
-                    className="flex items-center justify-between gap-3 border border-border/70 px-3 py-2.5"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">{p.name}</p>
-                      <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
-                        {TYPE_LABEL[p.providerType]} · {p.modelId ?? "any model"}
-                        {p.models.length > 0 && ` · ${p.models.length} models`} · key
-                        ends in …{p.keySuffix}
-                      </p>
-                      <p className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground/80">
-                        {p.baseUrl}
-                      </p>
+                providers?.map((p) => {
+                  const expanded = expandedId === p._id;
+                  const busy =
+                    settingModelId === p._id || loadingModelsFor === p._id;
+                  return (
+                    <div key={p._id} className="border border-border/70">
+                      <div className="flex items-center justify-between gap-3 px-3 py-2.5">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">{p.name}</p>
+                          <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                            {TYPE_LABEL[p.providerType]} ·{" "}
+                            {p.modelId ?? "any model"}
+                            {p.models.length > 0 &&
+                              ` · ${p.models.length} models`}{" "}
+                            · key ends in …{p.keySuffix}
+                          </p>
+                          <p className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground/80">
+                            {p.baseUrl}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 rounded-sm px-2 text-xs"
+                            disabled={testingId === p._id}
+                            onClick={() => void handleTest(p._id)}
+                          >
+                            {testingId === p._id ? (
+                              <Loader2 className="size-3.5 animate-spin" />
+                            ) : (
+                              <Zap className="mr-1 size-3.5" />
+                            )}
+                            Test
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="size-7 rounded-sm text-muted-foreground hover:text-foreground"
+                            aria-label={`Edit ${p.name}`}
+                            onClick={() => openEdit(p)}
+                          >
+                            <Pencil className="size-3.5" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className={cn(
+                              "size-7 rounded-sm text-muted-foreground hover:text-destructive",
+                            )}
+                            aria-label={`Delete ${p.name}`}
+                            onClick={() => void handleDelete(p._id)}
+                          >
+                            <Trash2 className="size-3.5" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className={cn(
+                              "size-7 rounded-sm text-muted-foreground hover:text-foreground",
+                            )}
+                            aria-label={
+                              expanded ? "Hide models" : "Show all models"
+                            }
+                            onClick={() =>
+                              setExpandedId(expanded ? null : p._id)
+                            }
+                          >
+                            <ChevronDown
+                              className={cn(
+                                "size-3.5 transition-transform",
+                                expanded && "rotate-180",
+                              )}
+                            />
+                          </Button>
+                        </div>
+                      </div>
+
+                      {expanded && (
+                        <div className="border-t border-border/70 px-3 py-2.5">
+                          {p.models.length > 0 ? (
+                            <>
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <p className="text-[10px] font-medium tracking-[0.18em] text-muted-foreground uppercase">
+                                  All models at this base URL
+                                </p>
+                                <button
+                                  type="button"
+                                  className={cn(
+                                    "text-[10px] underline-offset-4 transition-colors hover:underline",
+                                    p.modelId
+                                      ? "text-foreground hover:text-foreground"
+                                      : "text-muted-foreground hover:text-foreground",
+                                  )}
+                                  disabled={busy}
+                                  onClick={() =>
+                                    void handleSetModel(p._id, undefined)
+                                  }
+                                >
+                                  Use any model
+                                </button>
+                              </div>
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                {p.models.map((m) => {
+                                  const active = p.modelId === m;
+                                  return (
+                                    <button
+                                      key={m}
+                                      type="button"
+                                      title={
+                                        active
+                                          ? `${m} — active model`
+                                          : `Use ${m} for this provider`
+                                      }
+                                      className={cn(
+                                        "inline-flex max-w-full items-center gap-1 rounded-sm border px-1.5 py-0.5 font-mono text-[10px] transition-colors",
+                                        active
+                                          ? "border-foreground/40 bg-muted text-foreground"
+                                          : "border-border/70 text-muted-foreground hover:border-foreground/30 hover:text-foreground",
+                                      )}
+                                      disabled={busy}
+                                      onClick={() =>
+                                        void handleSetModel(p._id, m)
+                                      }
+                                    >
+                                      {active && (
+                                        <Check className="size-3 shrink-0" />
+                                      )}
+                                      <span className="truncate">{m}</span>
+                                    </button>
+                                  );
+                                })}
+                                {busy && (
+                                  <Loader2 className="ml-1 size-3.5 animate-spin text-muted-foreground" />
+                                )}
+                              </div>
+                            </>
+                          ) : (
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <p className="text-[11px] leading-5 text-muted-foreground">
+                                No models loaded yet — fetch the list from this
+                                base URL to pick any model.
+                              </p>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 rounded-sm px-2 text-xs"
+                                disabled={busy}
+                                onClick={() =>
+                                  void handleLoadModelsForProvider(p)
+                                }
+                              >
+                                {loadingModelsFor === p._id ? (
+                                  <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                                ) : (
+                                  <RefreshCw className="mr-1.5 size-3.5" />
+                                )}
+                                Load models
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    <div className="flex shrink-0 items-center gap-1">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 rounded-sm px-2 text-xs"
-                        disabled={testingId === p._id}
-                        onClick={() => void handleTest(p._id)}
-                      >
-                        {testingId === p._id ? (
-                          <Loader2 className="size-3.5 animate-spin" />
-                        ) : (
-                          <Zap className="mr-1 size-3.5" />
-                        )}
-                        Test
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="size-7 rounded-sm text-muted-foreground hover:text-foreground"
-                        aria-label={`Edit ${p.name}`}
-                        onClick={() => openEdit(p)}
-                      >
-                        <Pencil className="size-3.5" />
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className={cn(
-                          "size-7 rounded-sm text-muted-foreground hover:text-destructive",
-                        )}
-                        aria-label={`Delete ${p.name}`}
-                        onClick={() => void handleDelete(p._id)}
-                      >
-                        <Trash2 className="size-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
 
