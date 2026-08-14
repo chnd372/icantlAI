@@ -52,7 +52,7 @@ export default function Landing() {
     <div className="page-surface flex min-h-screen flex-col text-foreground">
       {/* Header */}
       <header className="sticky top-0 z-40 border-b border-black/[0.06] bg-white/70 backdrop-blur-md dark:border-white/10 dark:bg-black/40">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
+        <div className="mx-auto flex h-16 w-full max-w-[120rem] items-center justify-between px-6 sm:px-10">
           <Link to="/" className="flex items-baseline gap-2">
             <span className="font-display text-lg tracking-tight">
               Ican Translator AI
@@ -76,7 +76,7 @@ export default function Landing() {
       </header>
 
       {/* Hero */}
-      <section className="relative isolate mx-auto w-full max-w-7xl overflow-hidden px-6 pt-24 pb-20 sm:pt-32">
+      <section className="relative isolate flex min-h-[calc(100svh-4rem)] w-full flex-col justify-center overflow-hidden px-6 pt-20 pb-24 sm:px-10 sm:pt-24 lg:px-16">
         {/* Ambient glow — warm paper light bleeding in from the top corners */}
         <div
           aria-hidden
@@ -176,7 +176,7 @@ export default function Landing() {
       </section>
 
       {/* The standard */}
-      <section id="standard" className="mx-auto w-full max-w-7xl px-6 py-20">
+      <section id="standard" className="mx-auto w-full max-w-[120rem] px-6 py-20 sm:px-10 lg:px-16">
         <motion.div
           {...fadeUp}
           viewport={{ once: true, margin: "-80px" }}
@@ -220,7 +220,7 @@ export default function Landing() {
       </section>
 
       {/* Your catalog */}
-      <section className="mx-auto w-full max-w-7xl px-6 py-20">
+      <section className="mx-auto w-full max-w-[120rem] px-6 py-20 sm:px-10 lg:px-16">
         <motion.div
           {...fadeUp}
           viewport={{ once: true, margin: "-80px" }}
@@ -278,7 +278,7 @@ export default function Landing() {
       </section>
 
       {/* Your models, your languages */}
-      <section className="mx-auto w-full max-w-7xl px-6 py-20">
+      <section className="mx-auto w-full max-w-[120rem] px-6 py-20 sm:px-10 lg:px-16">
         <motion.div
           {...fadeUp}
           viewport={{ once: true, margin: "-80px" }}
@@ -338,7 +338,7 @@ export default function Landing() {
       </section>
 
       {/* How it works */}
-      <section className="mx-auto w-full max-w-7xl px-6 py-20">
+      <section className="mx-auto w-full max-w-[120rem] px-6 py-20 sm:px-10 lg:px-16">
         <motion.div
           {...fadeUp}
           viewport={{ once: true, margin: "-80px" }}
@@ -382,7 +382,7 @@ export default function Landing() {
       </section>
 
       {/* Final CTA */}
-      <section className="mx-auto w-full max-w-7xl px-6 py-24">
+      <section className="mx-auto w-full max-w-[120rem] px-6 py-24 sm:px-10 lg:px-16">
         <motion.div
           {...fadeUp}
           viewport={{ once: true, margin: "-80px" }}
@@ -410,7 +410,7 @@ export default function Landing() {
 
       {/* Footer */}
       <footer className="border-t border-border/70">
-        <div className="mx-auto flex max-w-7xl flex-col gap-2 px-6 py-8 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+        <div className="mx-auto flex w-full max-w-[120rem] flex-col gap-2 px-6 py-8 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-10">
           <span>
             <span className="font-display text-sm text-foreground">
               Ican Translator AI
