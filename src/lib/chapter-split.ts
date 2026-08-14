@@ -3,10 +3,85 @@ export interface ChapterSegment {
   sourceText: string;
 }
 
+/** Han characters, kana, hangul, and CJK punctuation. */
+const CJK_RE =
+  /[\u3000-\u303f\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]/;
+
+/** Sentence-ending punctuation (kept attached to the sentence when splitting). */
+const SENTENCE_BREAK_RE = /(?<=[。！？…；!?;])\s*/;
+
+/**
+ * Rough share of CJK characters in the text. CJK scripts have no word
+ * boundaries, so they need to be measured and split by character instead.
+ */
+function isCjkText(text: string): boolean {
+  const chars = text.replace(/\s/g, "");
+  if (chars.length === 0) return false;
+  let cjk = 0;
+  for (const ch of chars) {
+    if (CJK_RE.test(ch)) cjk++;
+  }
+  return cjk / chars.length > 0.3;
+}
+
+/** Count segmentation units: whitespace-delimited words for Latin text, characters for CJK. */
+function countUnits(text: string, cjk: boolean): number {
+  if (cjk) return text.replace(/\s/g, "").length;
+  return text.trim() ? text.trim().split(/\s+/).length : 0;
+}
+
+/**
+ * Split an over-long paragraph into bounded pieces, preferring sentence
+ * boundaries (。！？…；!?;) so each piece stays readable. Falls back to hard
+ * cuts when a single "sentence" is itself too long (e.g. no punctuation).
+ */
+function splitLongParagraph(paragraph: string, target: number, cjk: boolean): string[] {
+  const sentences = paragraph.split(SENTENCE_BREAK_RE).filter(Boolean);
+  if (sentences.length === 0) return [];
+
+  const chunks: string[] = [];
+  let current = "";
+  const join = cjk ? "" : " ";
+
+  const pushCurrent = () => {
+    if (current) {
+      chunks.push(current);
+      current = "";
+    }
+  };
+
+  for (const sentence of sentences) {
+    const unitCount = countUnits(sentence, cjk);
+    if (unitCount > target) {
+      // One enormous run of text with no useful breaks — cut it hard.
+      pushCurrent();
+      let remaining = sentence;
+      while (countUnits(remaining, cjk) > target) {
+        const cut = cjk
+          ? Array.from(remaining).slice(0, target).join("")
+          : remaining.split(/\s+/).slice(0, target).join(" ");
+        chunks.push(cut);
+        remaining = remaining.slice(cut.length);
+      }
+      if (remaining) chunks.push(remaining);
+      continue;
+    }
+
+    if (current && countUnits(current + join + sentence, cjk) > target) {
+      pushCurrent();
+    }
+    current = current ? current + join + sentence : sentence;
+  }
+  pushCurrent();
+
+  return chunks;
+}
+
 /**
  * Split a chapter into segments of roughly `targetWords` each, keeping
- * paragraphs intact. The client translates these one at a time so each LLM
- * call stays fast and progress can be persisted per segment.
+ * paragraphs intact where possible. CJK chapters (Chinese, Japanese, Korean)
+ * are measured in characters instead of words, so a chapter never collapses
+ * into one giant segment that would blow past the model's timeout.
  */
 export function splitChapter(
   text: string,
@@ -14,6 +89,9 @@ export function splitChapter(
 ): ChapterSegment[] {
   const normalized = text.replace(/\r\n/g, "\n").trim();
   if (!normalized) return [];
+
+  const cjk = isCjkText(normalized);
+  const target = cjk ? Math.round(targetWords * 1.15) : targetWords;
 
   // Prefer blank-line paragraph breaks; fall back to single newlines for
   // files where every line is a paragraph.
@@ -30,7 +108,7 @@ export function splitChapter(
 
   const segments: ChapterSegment[] = [];
   let current: string[] = [];
-  let words = 0;
+  let units = 0;
 
   const flush = () => {
     if (current.length === 0) return;
@@ -39,14 +117,25 @@ export function splitChapter(
       sourceText: current.join("\n\n"),
     });
     current = [];
-    words = 0;
+    units = 0;
   };
 
   for (const paragraph of paragraphs) {
-    const count = paragraph.split(/\s+/).length;
-    if (current.length > 0 && words + count > targetWords) flush();
+    const count = countUnits(paragraph, cjk);
+    if (count > target) {
+      // Paragraph alone exceeds the target — split it at sentence breaks.
+      flush();
+      for (const piece of splitLongParagraph(paragraph, target, cjk)) {
+        segments.push({
+          index: segments.length,
+          sourceText: piece,
+        });
+      }
+      continue;
+    }
+    if (current.length > 0 && units + count > target) flush();
     current.push(paragraph);
-    words += count;
+    units += count;
   }
   flush();
 
@@ -76,5 +165,8 @@ export function extractTitle(text: string): string | null {
 }
 
 export function countWords(text: string): number {
-  return text.trim() ? text.trim().split(/\s+/).length : 0;
+  const trimmed = text.trim();
+  if (!trimmed) return 0;
+  if (isCjkText(trimmed)) return trimmed.replace(/\s/g, "").length;
+  return trimmed.split(/\s+/).length;
 }
