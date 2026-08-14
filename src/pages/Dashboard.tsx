@@ -906,12 +906,14 @@ export default function Dashboard() {
                   </div>
                 ) : sourceInputMode === "paste" ? (
                   <div className="flex flex-1 flex-col">
-                    <Textarea
-                      value={pasteText}
-                      onChange={(e) => setPasteText(e.target.value)}
-                      placeholder="Paste the raw chapter text here…"
-                      className="m-5 flex-1 min-h-44 rounded-sm border-border/80 text-sm leading-6 shadow-none"
-                    />
+                    <div className="flex min-h-0 flex-1 flex-col px-5 pt-4">
+                      <Textarea
+                        value={pasteText}
+                        onChange={(e) => setPasteText(e.target.value)}
+                        placeholder="Paste the raw chapter text here…"
+                        className="min-h-44 flex-1 resize-none rounded-sm border-border/80 bg-background text-sm leading-6 shadow-none [field-sizing:fixed]"
+                      />
+                    </div>
                     <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/70 px-5 py-2.5">
                       <span className="text-[11px] text-muted-foreground">
                         {pasteText.trim()
