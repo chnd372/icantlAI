@@ -655,7 +655,7 @@ export default function Dashboard() {
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
           <div className="flex items-center gap-3">
             <span className="font-display text-lg tracking-tight">
-              Novel Translator App
+              Ican Translator AI
             </span>
             <span className="hidden text-[11px] font-medium tracking-[0.22em] text-muted-foreground uppercase md:inline">
               Personal studio

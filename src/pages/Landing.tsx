@@ -55,7 +55,7 @@ export default function Landing() {
         <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-6">
           <Link to="/" className="flex items-baseline gap-2">
             <span className="font-display text-lg tracking-tight">
-              Novel Translator App
+              Ican Translator AI
             </span>
             <span className="hidden text-xs text-muted-foreground sm:inline">
               your personal translation studio
@@ -97,7 +97,7 @@ export default function Landing() {
           transition={{ duration: 0.6, delay: 0.16, ease: [0.22, 1, 0.36, 1] }}
           className="mt-6 max-w-xl text-base leading-7 text-muted-foreground sm:text-lg"
         >
-          Novel Translator App turns uploaded chapters of wuxia, xianxia, murim, and
+          Ican Translator AI turns uploaded chapters of wuxia, xianxia, murim, and
           fantasy fiction into natural, fluent Indonesian — then files every finished
           chapter into a catalog you can browse and search whenever you need it.
         </motion.p>
@@ -395,11 +395,11 @@ export default function Landing() {
         <div className="mx-auto flex max-w-5xl flex-col gap-2 px-6 py-8 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
           <span>
             <span className="font-display text-sm text-foreground">
-              Novel Translator App
+              Ican Translator AI
             </span>{" "}
             — your personal web novel translation studio
           </span>
-          <span>© 2026 Novel Translator App</span>
+          <span>© 2026 Ican Translator AI</span>
         </div>
       </footer>
     </div>
