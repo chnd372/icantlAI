@@ -194,8 +194,8 @@ export function ProvidersDialog({
           <DialogTitle>AI providers</DialogTitle>
           <DialogDescription>
             Connect any OpenAI- or Anthropic-compatible endpoint and translate
-            with whichever model you want. The built-in gateway stays available
-            alongside your own providers.
+            with whichever model you want. All translations run through your
+            own providers.
           </DialogDescription>
         </DialogHeader>
 

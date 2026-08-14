@@ -29,9 +29,10 @@ const schema = defineSchema(
       emailVerificationTime: v.optional(v.number()), // email verification time. do not remove
       isAnonymous: v.optional(v.boolean()), // is the user anonymous. do not remove
       customPrompt: v.optional(v.string()), // translator's own instructions injected into every translation prompt
+      username: v.optional(v.string()), // login handle for password accounts without an email
 
       role: v.optional(roleValidator), // role of the user. do not remove
-    }).index("email", ["email"]), // index for the email. do not remove or modify
+    }).index("email", ["email"]).index("by_username", ["username"]), // indexes for login lookups
 
     // A translated chapter. The source is stored once here; the translated
     // result is assembled from translationSegments as they complete.

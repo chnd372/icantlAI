@@ -79,13 +79,14 @@ function splitLongParagraph(paragraph: string, target: number, cjk: boolean): st
 
 /**
  * Split a chapter into segments of roughly `targetWords` each, keeping
- * paragraphs intact where possible. CJK chapters (Chinese, Japanese, Korean)
- * are measured in characters instead of words, so a chapter never collapses
- * into one giant segment that would blow past the model's timeout.
+ * paragraphs intact where possible. The default lands in the 1,000-2,500
+ * raw-word range translators expect; CJK chapters (Chinese, Japanese,
+ * Korean) are measured in characters instead of words, so a chapter never
+ * collapses into one giant segment that would blow past the model's timeout.
  */
 export function splitChapter(
   text: string,
-  targetWords = 650,
+  targetWords = 1500,
 ): ChapterSegment[] {
   const normalized = text.replace(/\r\n/g, "\n").trim();
   if (!normalized) return [];

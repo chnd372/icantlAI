@@ -66,12 +66,6 @@ interface QueueItem {
   error?: string;
 }
 
-const MODELS = [
-  { id: "gpt-4o-mini", label: "Fast", detail: "gpt-4o-mini" },
-  { id: "gpt-4o", label: "Balanced", detail: "gpt-4o" },
-  { id: "gpt-5", label: "Quality", detail: "gpt-5" },
-] as const;
-
 const MAX_FILE_SIZE = 250_000; // characters
 
 function langPair(sourceLang: string, targetLang: string) {
@@ -114,7 +108,7 @@ export default function Dashboard() {
   const convex = useConvex();
 
   const [tab, setTab] = useState<Tab>("translate");
-  const [providerChoice, setProviderChoice] = useState("vly:gpt-4o-mini");
+  const [selectedProviderId, setSelectedProviderId] = useState<Id<"aiProviders"> | "">("");
   const [sourceLang, setSourceLang] = useState("en");
   const [targetLang, setTargetLang] = useState("id");
   const [providersOpen, setProvidersOpen] = useState(false);
@@ -180,13 +174,12 @@ export default function Dashboard() {
     }
   }, [user]);
 
-  const isCustom = providerChoice.startsWith("custom:");
-  const selectedProviderId = isCustom
-    ? (providerChoice.slice("custom:".length) as Id<"aiProviders">)
-    : undefined;
-  const selectedVlyModel = providerChoice.startsWith("vly:")
-    ? providerChoice.slice("vly:".length)
-    : "gpt-4o-mini";
+  // Auto-select the first provider so the studio is ready to translate.
+  useEffect(() => {
+    if (providers && providers.length > 0 && !selectedProviderId) {
+      setSelectedProviderId(providers[0]._id);
+    }
+  }, [providers, selectedProviderId]);
 
   const displaySource = localSource ?? active?.translation.sourceText ?? null;
   const displayFileName = localFileName ?? active?.translation.fileName ?? null;
@@ -299,7 +292,7 @@ export default function Dashboard() {
       options: {
         sourceLang: string;
         targetLang: string;
-        providerId?: Id<"aiProviders">;
+        providerId: Id<"aiProviders">;
         model: string;
       },
     ): Promise<boolean> => {
@@ -314,7 +307,6 @@ export default function Dashboard() {
             sourceLang: options.sourceLang,
             targetLang: options.targetLang,
             providerId: options.providerId,
-            model: options.model,
           });
         }
         return true;
@@ -347,15 +339,17 @@ export default function Dashboard() {
     }
 
     const chosenProvider = providers?.find((p) => p._id === selectedProviderId);
-    if (isCustom && !chosenProvider) {
-      toast.error("That provider no longer exists — pick another one.");
+    if (!chosenProvider) {
+      toast.error(
+        "Add an AI provider first — open the gear icon next to the provider selector.",
+      );
       return;
     }
     const options = {
       sourceLang,
       targetLang,
-      providerId: isCustom ? selectedProviderId : undefined,
-      model: isCustom ? (chosenProvider?.modelId ?? "") : selectedVlyModel,
+      providerId: selectedProviderId as Id<"aiProviders">,
+      model: chosenProvider.modelId ?? "",
     };
 
     try {
@@ -392,6 +386,12 @@ export default function Dashboard() {
 
   const handleResume = async () => {
     if (!active || runningRef.current || processingRef.current) return;
+    if (!active.translation.providerId) {
+      toast.error(
+        "This chapter predates custom providers — re-run it with a provider selected.",
+      );
+      return;
+    }
     const pending = active.segments.filter(
       (s) => s.status === "pending" || s.status === "error",
     );
@@ -402,7 +402,7 @@ export default function Dashboard() {
       {
         sourceLang: active.translation.sourceLang,
         targetLang: active.translation.targetLang,
-        providerId: active.translation.providerId ?? undefined,
+        providerId: active.translation.providerId,
         model: active.translation.model,
       },
     );
@@ -415,15 +415,17 @@ export default function Dashboard() {
       if (segments.length === 0) return false;
 
       const chosenProvider = providers?.find((p) => p._id === selectedProviderId);
-      if (isCustom && !chosenProvider) {
-        toast.error("That provider no longer exists — pick another one.");
+      if (!chosenProvider) {
+        toast.error(
+          "Add an AI provider first — open the gear icon next to the provider selector.",
+        );
         return false;
       }
       const options = {
         sourceLang,
         targetLang,
-        providerId: isCustom ? selectedProviderId : undefined,
-        model: isCustom ? (chosenProvider?.modelId ?? "") : selectedVlyModel,
+        providerId: selectedProviderId as Id<"aiProviders">,
+        model: chosenProvider.modelId ?? "",
       };
 
       try {
@@ -473,9 +475,7 @@ export default function Dashboard() {
       startTranslation,
       runSegments,
       providers,
-      isCustom,
       selectedProviderId,
-      selectedVlyModel,
       sourceLang,
       targetLang,
       novelName,
@@ -689,33 +689,34 @@ export default function Dashboard() {
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
-            <Select value={providerChoice} onValueChange={setProviderChoice}>
+            <Select
+              value={selectedProviderId || undefined}
+              onValueChange={(v) =>
+                setSelectedProviderId(v as Id<"aiProviders">)
+              }
+            >
               <SelectTrigger
                 size="sm"
                 className="w-fit max-w-56 rounded-sm border-border/80 bg-transparent text-xs"
                 aria-label="AI provider"
               >
-                <SelectValue />
+                <SelectValue placeholder="No provider" />
               </SelectTrigger>
               <SelectContent className="rounded-sm">
-                <SelectGroup>
-                  <SelectLabel>Built-in gateway</SelectLabel>
-                  {MODELS.map((m) => (
-                    <SelectItem key={`vly:${m.id}`} value={`vly:${m.id}`}>
-                      {m.label} · {m.detail}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-                {providers && providers.length > 0 && (
+                {providers && providers.length > 0 ? (
                   <SelectGroup>
                     <SelectLabel>Your providers</SelectLabel>
                     {providers.map((p) => (
-                      <SelectItem key={`custom:${p._id}`} value={`custom:${p._id}`}>
+                      <SelectItem key={p._id} value={p._id}>
                         {p.name}
                         {p.modelId ? ` · ${p.modelId}` : " · any model"}
                       </SelectItem>
                     ))}
                   </SelectGroup>
+                ) : (
+                  <div className="px-3 py-3 text-xs text-muted-foreground">
+                    No providers yet — add one with the gear icon.
+                  </div>
                 )}
               </SelectContent>
             </Select>

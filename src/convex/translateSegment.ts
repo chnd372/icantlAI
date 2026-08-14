@@ -4,7 +4,6 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
 
 import { languageName } from "../lib/languages";
-import { vly } from "../lib/vly-integrations";
 import { api, internal } from "./_generated/api";
 import { action } from "./_generated/server";
 import { buildTranslationPrompt } from "./translationPrompt";
@@ -40,7 +39,7 @@ async function callOpenAICompatible(options: CallOptions): Promise<string> {
       temperature: 0.3,
       max_tokens: options.maxTokens,
     }),
-    signal: AbortSignal.timeout(120_000),
+    signal: AbortSignal.timeout(180_000),
   });
 
   if (!response.ok) {
@@ -75,7 +74,7 @@ async function callAnthropic(options: CallOptions): Promise<string> {
       system: options.system,
       messages: [{ role: "user", content: options.user }],
     }),
-    signal: AbortSignal.timeout(120_000),
+    signal: AbortSignal.timeout(180_000),
   });
 
   if (!response.ok) {
@@ -166,8 +165,7 @@ function pickChatModel(models: string[]): string | undefined {
 }
 
 /**
- * Translate a single segment. Uses the user's custom provider when
- * `providerId` is given, otherwise the built-in Vly gateway with `model`.
+ * Translate a single segment through one of the user's custom providers.
  */
 export const translateSegment = action({
   args: {
@@ -175,8 +173,7 @@ export const translateSegment = action({
     sourceText: v.string(),
     sourceLang: v.string(),
     targetLang: v.string(),
-    providerId: v.optional(v.id("aiProviders")),
-    model: v.optional(v.string()),
+    providerId: v.id("aiProviders"),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -196,57 +193,39 @@ export const translateSegment = action({
     )}. Output only the translated text, nothing else.\n\n---\n${args.sourceText}`;
 
     try {
-      let translatedText: string;
-
-      if (args.providerId) {
-        const provider = await ctx.runQuery(
-          internal.providers.getProviderForAction,
-          { providerId: args.providerId, userId },
+      const provider = await ctx.runQuery(
+        internal.providers.getProviderForAction,
+        { providerId: args.providerId, userId },
+      );
+      if (!provider) {
+        throw new Error(
+          "AI provider no longer exists — check your provider settings.",
         );
-        if (!provider) {
-          throw new Error(
-            "AI provider no longer exists — check your provider settings.",
-          );
-        }
-        // No model set on the provider? Pick a chat-capable model from the
-        // endpoint's model list so the provider still just works.
-        let modelId = provider.modelId ?? undefined;
-        if (!modelId) {
-          const models = await listModels(
-            provider.providerType,
-            provider.baseUrl,
-            provider.apiKey,
-          );
-          modelId = pickChatModel(models);
-          if (!modelId) {
-            throw new Error(
-              "No models found at this base URL — set a model ID for this provider.",
-            );
-          }
-        }
-        translatedText = await complete(provider.providerType, {
-          baseUrl: provider.baseUrl,
-          apiKey: provider.apiKey,
-          model: modelId,
-          system,
-          user,
-          maxTokens: 5000,
-        });
-      } else {
-        const result = await vly.ai.completion({
-          model: args.model ?? "gpt-4o-mini",
-          messages: [
-            { role: "system", content: system },
-            { role: "user", content: user },
-          ],
-          temperature: 0.3,
-          maxTokens: 5000,
-        });
-        if (!result.success) {
-          throw new Error(result.error ?? "Translation failed");
-        }
-        translatedText = result.data?.choices?.[0]?.message?.content ?? "";
       }
+      // No model set on the provider? Pick a chat-capable model from the
+      // endpoint's model list so the provider still just works.
+      let modelId = provider.modelId ?? undefined;
+      if (!modelId) {
+        const models = await listModels(
+          provider.providerType,
+          provider.baseUrl,
+          provider.apiKey,
+        );
+        modelId = pickChatModel(models);
+        if (!modelId) {
+          throw new Error(
+            "No models found at this base URL — set a model ID for this provider.",
+          );
+        }
+      }
+      const translatedText = await complete(provider.providerType, {
+        baseUrl: provider.baseUrl,
+        apiKey: provider.apiKey,
+        model: modelId,
+        system,
+        user,
+        maxTokens: 5000,
+      });
 
       if (!translatedText.trim()) {
         throw new Error("Empty response from the model");
