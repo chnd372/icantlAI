@@ -80,16 +80,16 @@ export default function Landing() {
         {/* Ambient glow — warm paper light bleeding in from the top corners */}
         <div
           aria-hidden
-          className="absolute -top-40 -left-40 -z-10 size-96 rounded-full bg-amber-200/40 blur-[128px] dark:bg-amber-600/25"
+          className="absolute -top-40 -left-40 -z-10 size-96 rounded-full bg-amber-200/60 blur-[128px] dark:bg-amber-600/25"
         />
         <div
           aria-hidden
-          className="absolute top-20 -right-40 -z-10 size-[500px] rounded-full bg-orange-100/50 blur-[140px] dark:bg-orange-600/20"
+          className="absolute top-20 -right-40 -z-10 size-[500px] rounded-full bg-orange-100/70 blur-[140px] dark:bg-orange-600/20"
         />
         {/* Soft spotlight behind the headline */}
         <div
           aria-hidden
-          className="absolute top-0 left-1/2 -z-10 size-[640px] -translate-x-1/2 rounded-full bg-amber-100/25 blur-[160px] dark:bg-amber-500/15"
+          className="absolute top-0 left-1/2 -z-10 size-[640px] -translate-x-1/2 rounded-full bg-amber-100/40 blur-[160px] dark:bg-amber-500/15"
         />
         {/* Faint dot matrix, fading out toward the edges */}
         <div aria-hidden className="dot-grid absolute inset-0 -z-10" />
