@@ -116,8 +116,11 @@ export default function Dashboard() {
   const [localFileName, setLocalFileName] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<Id<"translations"> | null>(null);
   const [dragOver, setDragOver] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<Id<"translations"> | null>(null);
+
+  // Catalog result viewer
+  const [viewerId, setViewerId] = useState<Id<"translations"> | null>(null);
+  const [viewerCopied, setViewerCopied] = useState(false);
 
   // Translation instructions (custom prompt), saved to the account
   const [customPrompt, setCustomPrompt] = useState("");
@@ -156,6 +159,10 @@ export default function Dashboard() {
     api.translations.getTranslation,
     activeId ? { translationId: activeId } : "skip",
   );
+  const viewer = useQuery(
+    api.translations.getTranslation,
+    viewerId ? { translationId: viewerId } : "skip",
+  );
 
   useEffect(() => {
     if (!promptSynced.current && user) {
@@ -188,6 +195,14 @@ export default function Dashboard() {
       ? active.translation.completedSegments / active.translation.segmentCount
       : 0
     : 0;
+
+  const viewerText = useMemo(() => {
+    if (!viewer) return "";
+    return viewer.segments
+      .filter((s) => s.status === "done" && s.translatedText)
+      .map((s) => s.translatedText)
+      .join("\n\n");
+  }, [viewer]);
 
   const filtered = useMemo(() => {
     if (!translations) return [];
@@ -568,27 +583,35 @@ export default function Dashboard() {
     toast.success("Chapter removed from your catalog.");
   };
 
-  const handleCopy = async () => {
-    if (!translatedText) return;
+  const copyToClipboard = async (
+    text: string,
+    setCopiedFlag: (value: boolean) => void,
+  ) => {
+    if (!text) return;
     try {
-      await navigator.clipboard.writeText(translatedText);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1800);
+      await navigator.clipboard.writeText(text);
+      setCopiedFlag(true);
+      window.setTimeout(() => setCopiedFlag(false), 1800);
     } catch {
       toast.error("Could not copy — select the text manually.");
     }
   };
 
-  const handleDownload = () => {
-    if (!translatedText) return;
-    const name = displayFileName ? baseName(displayFileName) : "chapter";
-    const blob = new Blob([translatedText], { type: "text/plain;charset=utf-8" });
+  const downloadText = (text: string, fileName: string, targetLang: string) => {
+    if (!text) return;
+    const name = baseName(fileName);
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `${name} - ${LANG_LABEL[targetLang]}.txt`;
+    anchor.download = `${name} - ${LANG_LABEL[targetLang] ?? "txt"}.txt`;
     anchor.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleOpenViewer = (id: Id<"translations">) => {
+    if (runningRef.current || processingRef.current) return;
+    setViewerId(id);
   };
 
   const handleImport = async () => {
@@ -915,38 +938,13 @@ export default function Dashboard() {
                           style={{ width: `${Math.round(progress * 100)}%` }}
                         />
                       </div>
-                      <div className="flex flex-wrap items-center gap-2 px-5 py-2.5">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 rounded-sm px-2 text-xs"
-                          disabled={!translatedText}
-                          onClick={handleCopy}
-                        >
-                          {copied ? (
-                            <>
-                              <Check className="mr-1.5 size-3.5" /> Copied
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="mr-1.5 size-3.5" /> Copy
-                            </>
-                          )}
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 rounded-sm px-2 text-xs"
-                          disabled={!translatedText}
-                          onClick={handleDownload}
-                        >
-                          <Download className="mr-1.5 size-3.5" /> Download .txt
-                        </Button>
-                        <span className="ml-auto hidden text-[11px] text-muted-foreground sm:inline">
-                          {countWords(translatedText).toLocaleString()} words ·{" "}
-                          {LANG_LABEL[active.translation.targetLang]}
+                      <div className="flex flex-wrap items-center justify-end gap-2 px-5 py-2.5">
+                        <span className="text-[11px] text-muted-foreground">
+                          {status === "done"
+                            ? "Saved to catalog — copy or download it there."
+                            : `${countWords(translatedText).toLocaleString()} words · ${
+                                LANG_LABEL[active.translation.targetLang]
+                              }`}
                         </span>
                       </div>
                     </div>
@@ -1280,11 +1278,11 @@ export default function Dashboard() {
                         "group grid cursor-pointer grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1 px-2 py-3 transition-colors hover:bg-muted/50",
                         activeId === t._id && "bg-muted/60",
                       )}
-                      onClick={() => void handleOpenInTranslator(t._id)}
+                      onClick={() => handleOpenViewer(t._id)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault();
-                          void handleOpenInTranslator(t._id);
+                          handleOpenViewer(t._id);
                         }
                       }}
                     >
@@ -1343,6 +1341,104 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      {/* Catalog result viewer */}
+      <Dialog
+        open={viewerId !== null}
+        onOpenChange={(open) => {
+          if (!open) setViewerId(null);
+        }}
+      >
+        <DialogContent className="max-w-2xl rounded-sm">
+          <DialogHeader>
+            <DialogTitle className="pr-8">
+              {viewer?.translation.title ?? viewer?.translation.fileName ?? "Chapter"}
+            </DialogTitle>
+            <DialogDescription>
+              {viewer
+                ? [
+                    viewer.translation.novelName,
+                    langPair(
+                      viewer.translation.sourceLang,
+                      viewer.translation.targetLang,
+                    ),
+                    modelLabel(viewer.translation.model),
+                    formatDate(viewer.translation.createdAt),
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")
+                : "Loading…"}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="max-h-[52vh] overflow-y-auto border-y border-border/70 px-5 py-4">
+            {viewerText ? (
+              <div className="font-display text-[15px] leading-7 whitespace-pre-wrap">
+                {viewerText}
+              </div>
+            ) : (
+              <div className="space-y-3 pt-1">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="h-4 animate-pulse rounded-sm bg-muted"
+                    style={{ width: `${88 - (i % 4) * 12}%` }}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="flex-wrap items-center gap-2">
+            <span className="mr-auto text-[11px] text-muted-foreground">
+              {viewerText ? `${countWords(viewerText).toLocaleString()} words` : ""}
+            </span>
+            <Button
+              type="button"
+              variant="ghost"
+              className="rounded-sm text-muted-foreground hover:text-foreground"
+              onClick={() => {
+                const id = viewerId;
+                setViewerId(null);
+                if (id) void handleOpenInTranslator(id);
+              }}
+            >
+              <ArrowRight className="mr-2 size-3.5" />
+              Open in translator
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="rounded-sm text-muted-foreground hover:text-foreground"
+              disabled={!viewerText}
+              onClick={() => void copyToClipboard(viewerText, setViewerCopied)}
+            >
+              {viewerCopied ? (
+                <Check className="mr-2 size-3.5" />
+              ) : (
+                <Copy className="mr-2 size-3.5" />
+              )}
+              {viewerCopied ? "Copied" : "Copy"}
+            </Button>
+            <Button
+              type="button"
+              className="rounded-sm px-5 shadow-none hover:bg-foreground/90"
+              disabled={!viewerText || !viewer}
+              onClick={() =>
+                viewer &&
+                downloadText(
+                  viewerText,
+                  viewer.translation.fileName,
+                  viewer.translation.targetLang,
+                )
+              }
+            >
+              <Download className="mr-2 size-3.5" />
+              Download .txt
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Import dialog */}
       <Dialog open={importOpen} onOpenChange={setImportOpen}>
