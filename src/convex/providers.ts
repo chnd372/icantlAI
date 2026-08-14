@@ -21,7 +21,8 @@ export const listProviders = query({
       name: p.name,
       providerType: p.providerType,
       baseUrl: p.baseUrl,
-      modelId: p.modelId,
+      modelId: p.modelId ?? null,
+      models: p.models ?? [],
       keySuffix: p.apiKey.slice(-4),
       createdAt: p.createdAt,
     }));
@@ -44,7 +45,8 @@ export const getProviderForAction = internalQuery({
       providerType: provider.providerType,
       baseUrl: provider.baseUrl,
       apiKey: provider.apiKey,
-      modelId: provider.modelId,
+      modelId: provider.modelId ?? null,
+      models: provider.models ?? [],
     };
   },
 });
@@ -61,7 +63,8 @@ export const saveProvider = mutation({
     providerType: v.union(v.literal("openai"), v.literal("anthropic")),
     baseUrl: v.string(),
     apiKey: v.string(),
-    modelId: v.string(),
+    modelId: v.optional(v.string()),
+    models: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -69,10 +72,10 @@ export const saveProvider = mutation({
 
     const name = args.name.trim();
     const baseUrl = args.baseUrl.trim().replace(/\/+$/, "");
-    const modelId = args.modelId.trim();
+    const modelId = args.modelId?.trim() || undefined;
 
-    if (!name || !baseUrl || !modelId) {
-      throw new Error("Name, base URL, and model are required.");
+    if (!name || !baseUrl) {
+      throw new Error("Name and base URL are required.");
     }
     if (!/^https?:\/\//i.test(baseUrl)) {
       throw new Error("Base URL must start with http:// or https://");
@@ -88,6 +91,7 @@ export const saveProvider = mutation({
         providerType: args.providerType,
         baseUrl,
         modelId,
+        models: args.models ?? existing.models,
         apiKey: args.apiKey.trim() || existing.apiKey,
         updatedAt: now,
       });
@@ -102,6 +106,7 @@ export const saveProvider = mutation({
       baseUrl,
       apiKey: args.apiKey.trim(),
       modelId,
+      models: args.models ?? [],
       createdAt: now,
       updatedAt: now,
     });

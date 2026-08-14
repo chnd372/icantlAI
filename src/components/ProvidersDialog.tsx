@@ -1,7 +1,14 @@
 import { useState } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
-import { Loader2, Pencil, Plus, Trash2, Zap } from "lucide-react";
+import {
+  Loader2,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Trash2,
+  Zap,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -23,6 +30,7 @@ import {
 } from "@/components/ui/select";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { cn } from "@/lib/utils";
 
 type ProviderType = "openai" | "anthropic";
 
@@ -63,16 +71,22 @@ export function ProvidersDialog({
   const saveProvider = useMutation(api.providers.saveProvider);
   const deleteProvider = useMutation(api.providers.deleteProvider);
   const testProviderAction = useAction(api.translateSegment.testProvider);
+  const listProviderModelsAction = useAction(api.translateSegment.listProviderModels);
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<Id<"aiProviders"> | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [testingId, setTestingId] = useState<Id<"aiProviders"> | null>(null);
+  const [models, setModels] = useState<string[]>([]);
+  const [loadingModels, setLoadingModels] = useState(false);
+  const [modelError, setModelError] = useState<string | null>(null);
 
   const openAdd = () => {
     setEditingId(null);
     setForm(EMPTY_FORM);
+    setModels([]);
+    setModelError(null);
     setShowForm(true);
   };
 
@@ -83,9 +97,41 @@ export function ProvidersDialog({
       providerType: p.providerType,
       baseUrl: p.baseUrl,
       apiKey: "",
-      modelId: p.modelId,
+      modelId: p.modelId ?? "",
     });
+    setModels(p.models);
+    setModelError(null);
     setShowForm(true);
+  };
+
+  const canLoadModels =
+    form.baseUrl.trim() !== "" &&
+    (editingId !== null || form.apiKey.trim() !== "");
+
+  const handleLoadModels = async () => {
+    if (loadingModels) return;
+    setLoadingModels(true);
+    setModelError(null);
+    try {
+      const result =
+        editingId !== null && !form.apiKey.trim()
+          ? await listProviderModelsAction({ providerId: editingId })
+          : await listProviderModelsAction({
+              providerType: form.providerType,
+              baseUrl: form.baseUrl,
+              apiKey: form.apiKey,
+            });
+      setModels(result);
+      if (result.length === 0) {
+        setModelError("No models found at this base URL.");
+      }
+    } catch (error) {
+      setModelError(
+        error instanceof Error ? error.message : "Could not load models.",
+      );
+    } finally {
+      setLoadingModels(false);
+    }
   };
 
   const handleSave = async () => {
@@ -98,12 +144,15 @@ export function ProvidersDialog({
         providerType: form.providerType,
         baseUrl: form.baseUrl,
         apiKey: form.apiKey,
-        modelId: form.modelId,
+        modelId: form.modelId.trim() || undefined,
+        models,
       });
       toast.success(editingId ? "Provider updated." : "Provider added.");
       setShowForm(false);
       setEditingId(null);
       setForm(EMPTY_FORM);
+      setModels([]);
+      setModelError(null);
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Could not save the provider.",
@@ -136,7 +185,6 @@ export function ProvidersDialog({
   const canSave =
     form.name.trim() !== "" &&
     form.baseUrl.trim() !== "" &&
-    form.modelId.trim() !== "" &&
     (editingId !== null || form.apiKey.trim() !== "");
 
   return (
@@ -221,7 +269,7 @@ export function ProvidersDialog({
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="provider-model" className="text-xs">
-                    Model ID
+                    Model ID <span className="text-muted-foreground">(optional)</span>
                   </Label>
                   <Input
                     id="provider-model"
@@ -231,6 +279,57 @@ export function ProvidersDialog({
                     className="rounded-sm border-border/80 font-mono text-xs shadow-none"
                   />
                 </div>
+              </div>
+
+              {/* Models at this base URL */}
+              <div className="space-y-2 border-t border-border/70 pt-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <Label className="text-xs">Models at this base URL</Label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 rounded-sm px-2 text-xs"
+                    disabled={!canLoadModels || loadingModels}
+                    onClick={() => void handleLoadModels()}
+                  >
+                    {loadingModels ? (
+                      <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                    ) : models.length > 0 ? (
+                      <RefreshCw className="mr-1.5 size-3.5" />
+                    ) : null}
+                    {models.length > 0 ? "Reload models" : "Load models"}
+                  </Button>
+                </div>
+
+                {modelError && (
+                  <p className="text-[11px] leading-5 text-destructive">{modelError}</p>
+                )}
+
+                {models.length > 0 && (
+                  <Select
+                    value={form.modelId}
+                    onValueChange={(value) => setForm({ ...form, modelId: value })}
+                  >
+                    <SelectTrigger className="w-full rounded-sm border-border/80 bg-card font-mono text-xs shadow-none">
+                      <SelectValue placeholder="Choose a model…" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-72 rounded-sm font-mono text-xs">
+                      {models.map((m) => (
+                        <SelectItem key={m} value={m}>
+                          {m}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+
+                {models.length === 0 && !loadingModels && !modelError && (
+                  <p className="text-[11px] leading-5 text-muted-foreground">
+                    Load the model list to pick any model at this base URL — or
+                    leave the model blank and one will be chosen automatically.
+                  </p>
+                )}
               </div>
 
               <p className="text-[11px] leading-5 text-muted-foreground">
@@ -276,8 +375,9 @@ export function ProvidersDialog({
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium">{p.name}</p>
                       <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
-                        {TYPE_LABEL[p.providerType]} · {p.modelId} · key ends in
-                        …{p.keySuffix}
+                        {TYPE_LABEL[p.providerType]} · {p.modelId ?? "any model"}
+                        {p.models.length > 0 && ` · ${p.models.length} models`} · key
+                        ends in …{p.keySuffix}
                       </p>
                       <p className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground/80">
                         {p.baseUrl}
@@ -313,7 +413,9 @@ export function ProvidersDialog({
                         type="button"
                         variant="ghost"
                         size="icon"
-                        className="size-7 rounded-sm text-muted-foreground hover:text-destructive"
+                        className={cn(
+                          "size-7 rounded-sm text-muted-foreground hover:text-destructive",
+                        )}
                         aria-label={`Delete ${p.name}`}
                         onClick={() => void handleDelete(p._id)}
                       >

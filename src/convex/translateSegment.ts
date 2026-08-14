@@ -105,6 +105,66 @@ async function complete(
     : callOpenAICompatible(options);
 }
 
+function normalizeBase(baseUrl: string): string {
+  return baseUrl
+    .replace(/\/+$/, "")
+    .replace(/\/chat\/completions$/i, "")
+    .replace(/\/v1\/messages$/i, "");
+}
+
+/** List model IDs available at an OpenAI- or Anthropic-compatible endpoint. */
+async function listModels(
+  providerType: "openai" | "anthropic",
+  baseUrl: string,
+  apiKey: string,
+): Promise<string[]> {
+  const base = normalizeBase(baseUrl);
+  const url =
+    providerType === "anthropic"
+      ? /\/v1\/models$/.test(base)
+        ? base
+        : /\/v1$/.test(base)
+          ? `${base}/models`
+          : `${base}/v1/models`
+      : /\/models$/.test(base)
+        ? base
+        : `${base}/models`;
+
+  const headers: Record<string, string> =
+    providerType === "anthropic"
+      ? { "x-api-key": apiKey, "anthropic-version": "2023-06-01" }
+      : { Authorization: `Bearer ${apiKey}` };
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers,
+    signal: AbortSignal.timeout(30_000),
+  });
+
+  if (!response.ok) {
+    const detail = (await response.text()).slice(0, 300);
+    throw new Error(
+      `Could not list models (${response.status}): ${detail || "request failed"}`,
+    );
+  }
+
+  const data = (await response.json()) as { data?: { id?: string }[] };
+  return (data.data ?? [])
+    .map((m) => m.id)
+    .filter((id): id is string => Boolean(id));
+}
+
+/** Prefer a chat-capable model over embeddings/speech/image models. */
+function pickChatModel(models: string[]): string | undefined {
+  const preferred = models.filter(
+    (m) =>
+      !/(embed|whisper|tts|speech|audio|transcri|image|dall|moderation|rerank)/i.test(
+        m,
+      ),
+  );
+  return preferred[0] ?? models[0];
+}
+
 /**
  * Translate a single segment. Uses the user's custom provider when
  * `providerId` is given, otherwise the built-in Vly gateway with `model`.
@@ -148,10 +208,26 @@ export const translateSegment = action({
             "AI provider no longer exists — check your provider settings.",
           );
         }
+        // No model set on the provider? Pick a chat-capable model from the
+        // endpoint's model list so the provider still just works.
+        let modelId = provider.modelId ?? undefined;
+        if (!modelId) {
+          const models = await listModels(
+            provider.providerType,
+            provider.baseUrl,
+            provider.apiKey,
+          );
+          modelId = pickChatModel(models);
+          if (!modelId) {
+            throw new Error(
+              "No models found at this base URL — set a model ID for this provider.",
+            );
+          }
+        }
         translatedText = await complete(provider.providerType, {
           baseUrl: provider.baseUrl,
           apiKey: provider.apiKey,
-          model: provider.modelId,
+          model: modelId,
           system,
           user,
           maxTokens: 5000,
@@ -201,6 +277,48 @@ export const translateSegment = action({
   },
 });
 
+/**
+ * List every model available at a provider's base URL. Accepts either a
+ * saved provider (by id) or the raw form values, so the picker works before
+ * the provider is saved.
+ */
+export const listProviderModels = action({
+  args: {
+    providerId: v.optional(v.id("aiProviders")),
+    providerType: v.optional(v.union(v.literal("openai"), v.literal("anthropic"))),
+    baseUrl: v.optional(v.string()),
+    apiKey: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<string[]> => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) throw new Error("Not signed in");
+
+    let providerType: "openai" | "anthropic";
+    let baseUrl: string;
+    let apiKey: string;
+
+    if (args.providerId) {
+      const provider = await ctx.runQuery(
+        internal.providers.getProviderForAction,
+        { providerId: args.providerId, userId },
+      );
+      if (!provider) throw new Error("Provider not found");
+      providerType = provider.providerType;
+      baseUrl = provider.baseUrl;
+      apiKey = provider.apiKey;
+    } else {
+      providerType = args.providerType ?? "openai";
+      baseUrl = args.baseUrl ?? "";
+      apiKey = args.apiKey ?? "";
+      if (!baseUrl.trim() || !apiKey.trim()) {
+        throw new Error("Base URL and API key are required to list models.");
+      }
+    }
+
+    return listModels(providerType, baseUrl, apiKey);
+  },
+});
+
 /** Send a minimal request to a saved provider to verify the connection. */
 export const testProvider = action({
   args: { providerId: v.id("aiProviders") },
@@ -217,10 +335,15 @@ export const testProvider = action({
     );
     if (!provider) throw new Error("Provider not found");
 
+    const modelId =
+      provider.modelId ??
+      pickChatModel(await listModels(provider.providerType, provider.baseUrl, provider.apiKey));
+    if (!modelId) throw new Error("No models found — set a model ID for this provider.");
+
     const reply = await complete(provider.providerType, {
       baseUrl: provider.baseUrl,
       apiKey: provider.apiKey,
-      model: provider.modelId,
+      model: modelId,
       system: "You are a connectivity test. Reply with exactly: OK",
       user: "Ping",
       maxTokens: 8,

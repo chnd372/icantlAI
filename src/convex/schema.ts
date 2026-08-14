@@ -67,7 +67,8 @@ const schema = defineSchema(
       providerType: v.union(v.literal("openai"), v.literal("anthropic")),
       baseUrl: v.string(),
       apiKey: v.string(),
-      modelId: v.string(),
+      modelId: v.optional(v.string()), // optional — when blank, the action picks a model from the provider's list
+      models: v.optional(v.array(v.string())), // last-fetched list of models at this base URL
       createdAt: v.number(),
       updatedAt: v.number(),
     }).index("by_user", ["userId", "createdAt"]),

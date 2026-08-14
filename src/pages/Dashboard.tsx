@@ -355,7 +355,7 @@ export default function Dashboard() {
       sourceLang,
       targetLang,
       providerId: isCustom ? selectedProviderId : undefined,
-      model: isCustom ? (chosenProvider?.modelId ?? "custom") : selectedVlyModel,
+      model: isCustom ? (chosenProvider?.modelId ?? "") : selectedVlyModel,
     };
 
     try {
@@ -423,7 +423,7 @@ export default function Dashboard() {
         sourceLang,
         targetLang,
         providerId: isCustom ? selectedProviderId : undefined,
-        model: isCustom ? (chosenProvider?.modelId ?? "custom") : selectedVlyModel,
+        model: isCustom ? (chosenProvider?.modelId ?? "") : selectedVlyModel,
       };
 
       try {
@@ -711,7 +711,8 @@ export default function Dashboard() {
                     <SelectLabel>Your providers</SelectLabel>
                     {providers.map((p) => (
                       <SelectItem key={`custom:${p._id}`} value={`custom:${p._id}`}>
-                        {p.name} · {p.modelId}
+                        {p.name}
+                        {p.modelId ? ` · ${p.modelId}` : " · any model"}
                       </SelectItem>
                     ))}
                   </SelectGroup>
