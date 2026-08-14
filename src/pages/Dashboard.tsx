@@ -680,7 +680,7 @@ export default function Dashboard() {
   );
 
   return (
-    <main className="min-h-screen bg-background text-foreground">
+    <main className="page-surface min-h-screen text-foreground">
       {/* Top bar */}
       <header className="sticky top-0 z-40 border-b border-black/[0.06] bg-white/70 backdrop-blur-md dark:border-white/10 dark:bg-black/40">
         <div className="mx-auto flex max-w-7xl flex-col px-4 sm:px-6">

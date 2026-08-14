@@ -158,3 +158,22 @@
 .dark .dot-grid {
   --dot-color: oklch(1 0 0 / 0.13);
 }
+
+/* Warm ambient light — a soft glow washing down from the top of the page so
+   the background never reads as flat black/white. Layered on every page. */
+:root {
+  --ambient-glow: oklch(0.95 0.03 85 / 0.55);
+  --ambient-glow-2: oklch(0.93 0.04 70 / 0.4);
+}
+.dark {
+  --ambient-glow: oklch(0.38 0.07 60 / 0.6);
+  --ambient-glow-2: oklch(0.32 0.06 30 / 0.5);
+}
+
+.page-surface {
+  background-color: var(--background);
+  background-image:
+    radial-gradient(ellipse 90% 55% at 50% -12%, var(--ambient-glow), transparent 72%),
+    radial-gradient(ellipse 50% 35% at 88% 0%, var(--ambient-glow-2), transparent 65%);
+  background-attachment: fixed;
+}

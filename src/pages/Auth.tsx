@@ -93,7 +93,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="page-surface min-h-screen flex flex-col">
       {/* Auth Content */}
       <div className="flex-1 flex items-center justify-center px-4 py-8">
         <div className="flex items-center justify-center h-full flex-col">
