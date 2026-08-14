@@ -93,6 +93,15 @@ function baseName(fileName: string) {
   return fileName.replace(/\.(txt|md|text)$/i, "");
 }
 
+/** A sensible file name for a chapter pasted directly as text. */
+function sourceFileName(text: string): string {
+  const base = (extractTitle(text) ?? "chapter")
+    .replace(/[^\p{L}\p{N}\s-]/gu, "")
+    .trim()
+    .slice(0, 60);
+  return `${base || "chapter"}.txt`;
+}
+
 function modelLabel(model: string) {
   return model === "imported" ? "Imported" : model;
 }
@@ -114,6 +123,8 @@ export default function Dashboard() {
   const [localFileName, setLocalFileName] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<Id<"translations"> | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [sourceInputMode, setSourceInputMode] = useState<"upload" | "paste">("upload");
+  const [pasteText, setPasteText] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<Id<"translations"> | null>(null);
 
   // Catalog result viewer
@@ -266,6 +277,21 @@ export default function Dashboard() {
     toast.success(`${items.length} chapters added to the queue.`);
   }, []);
 
+  const handleUsePasted = () => {
+    const text = pasteText.trim();
+    if (!text) return;
+    if (text.length > MAX_FILE_SIZE) {
+      toast.error("That text is too long — keep chapters under 250 KB.");
+      return;
+    }
+    setLocalSource(text);
+    setLocalFileName(sourceFileName(text));
+    setActiveId(null);
+    setConfirmDeleteId(null);
+    setPasteText("");
+    toast.success("Text loaded as the source chapter.");
+  };
+
   /** Translate every segment of one chapter. Returns false on failure. */
   const runSegments = useCallback(
     async (
@@ -334,7 +360,7 @@ export default function Dashboard() {
 
     try {
       const id = await createTranslation({
-        fileName: displayFileName ?? "chapter.txt",
+        fileName: displayFileName ?? sourceFileName(displaySource),
         title: extractTitle(displaySource) ?? undefined,
         novelName: novelName.trim() || undefined,
         sourceText: displaySource,
@@ -812,45 +838,94 @@ export default function Dashboard() {
                       </Button>
                     </div>
                   </div>
-                ) : (
-                  <label
-                    className={cn(
-                      "flex flex-1 cursor-pointer flex-col items-center justify-center gap-3 px-8 py-20 text-center transition-colors",
-                      dragOver ? "bg-muted/70" : "hover:bg-muted/40",
-                    )}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      setDragOver(true);
-                    }}
-                    onDragLeave={() => setDragOver(false)}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      setDragOver(false);
-                      if (!queueBusy) void handleFiles(e.dataTransfer.files);
-                    }}
-                  >
-                    <input
-                      type="file"
-                      accept=".txt,.md,.text,text/plain,text/markdown"
-                      multiple
-                      className="hidden"
-                      disabled={queueBusy}
-                      onChange={(e) => {
-                        if (e.target.files) void handleFiles(e.target.files);
-                        e.target.value = "";
-                      }}
+                ) : sourceInputMode === "paste" ? (
+                  <div className="flex flex-1 flex-col">
+                    <Textarea
+                      value={pasteText}
+                      onChange={(e) => setPasteText(e.target.value)}
+                      placeholder="Paste the raw chapter text here…"
+                      className="m-5 flex-1 min-h-44 rounded-sm border-border/80 text-sm leading-6 shadow-none"
                     />
-                    <div className="flex size-10 items-center justify-center rounded-sm border border-border/70 bg-background">
-                      <FileText className="size-4 text-muted-foreground" />
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/70 px-5 py-2.5">
+                      <span className="text-[11px] text-muted-foreground">
+                        {pasteText.trim()
+                          ? `${countWords(pasteText).toLocaleString()} words`
+                          : "Paste the chapter, then use it as the source."}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 rounded-sm px-2 text-xs text-muted-foreground hover:text-foreground"
+                          disabled={queueBusy}
+                          onClick={() => setSourceInputMode("upload")}
+                        >
+                          Back to file
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="h-7 rounded-sm px-4 text-xs shadow-none hover:bg-foreground/90"
+                          disabled={!pasteText.trim() || queueBusy}
+                          onClick={handleUsePasted}
+                        >
+                          Use this text
+                        </Button>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm font-medium">Drop chapter files here</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        or click to browse · one chapter, or several at once · .txt or
-                        .md · under 250 KB each
-                      </p>
+                  </div>
+                ) : (
+                  <div className="flex flex-1 flex-col">
+                    <label
+                      className={cn(
+                        "flex flex-1 cursor-pointer flex-col items-center justify-center gap-3 px-8 pt-16 pb-6 text-center transition-colors",
+                        dragOver ? "bg-muted/70" : "hover:bg-muted/40",
+                      )}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        setDragOver(true);
+                      }}
+                      onDragLeave={() => setDragOver(false)}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setDragOver(false);
+                        if (!queueBusy) void handleFiles(e.dataTransfer.files);
+                      }}
+                    >
+                      <input
+                        type="file"
+                        accept=".txt,.md,.text,text/plain,text/markdown"
+                        multiple
+                        className="hidden"
+                        disabled={queueBusy}
+                        onChange={(e) => {
+                          if (e.target.files) void handleFiles(e.target.files);
+                          e.target.value = "";
+                        }}
+                      />
+                      <div className="flex size-10 items-center justify-center rounded-sm border border-border/70 bg-background">
+                        <FileText className="size-4 text-muted-foreground" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">Drop chapter files here</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          or click to browse · .txt or .md · under 250 KB each — or
+                          paste the text directly
+                        </p>
+                      </div>
+                    </label>
+                    <div className="border-t border-border/70 px-5 py-3 text-center">
+                      <button
+                        type="button"
+                        className="text-xs text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
+                        disabled={queueBusy}
+                        onClick={() => setSourceInputMode("paste")}
+                      >
+                        Paste text instead
+                      </button>
                     </div>
-                  </label>
+                  </div>
                 )}
               </section>
 
