@@ -682,7 +682,7 @@ export default function Dashboard() {
   return (
     <main className="min-h-screen bg-background text-foreground">
       {/* Top bar */}
-      <header className="sticky top-0 z-40 border-b border-border/70 bg-background/90 backdrop-blur">
+      <header className="sticky top-0 z-40 border-b border-black/[0.06] bg-white/70 backdrop-blur-md dark:border-white/10 dark:bg-black/40">
         <div className="mx-auto flex max-w-7xl flex-col px-4 sm:px-6">
           {/* Row 1: brand + quick actions */}
           <div className="flex h-14 items-center justify-between gap-3 sm:h-16">
@@ -856,7 +856,7 @@ export default function Dashboard() {
             {/* Source / Translation panels */}
             <div className="grid gap-6 lg:grid-cols-2">
               {/* Source */}
-              <section className="flex flex-col border border-border/70 bg-card">
+              <section className="flex flex-col border border-black/[0.06] bg-card shadow-sm transition-shadow hover:shadow-md dark:border-white/10">
                 <div className="flex items-center justify-between border-b border-border/70 px-5 py-3.5">
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] font-medium tracking-[0.24em] text-muted-foreground uppercase">
@@ -996,7 +996,7 @@ export default function Dashboard() {
               </section>
 
               {/* Translation */}
-              <section className="flex flex-col border border-border/70 bg-card">
+              <section className="flex flex-col border border-black/[0.06] bg-card shadow-sm transition-shadow hover:shadow-md dark:border-white/10">
                 <div className="flex items-center justify-between border-b border-border/70 px-5 py-3.5">
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] font-medium tracking-[0.24em] text-muted-foreground uppercase">
@@ -1214,7 +1214,7 @@ export default function Dashboard() {
                 conflict with the general rules, your instructions win.
               </p>
               {!promptExpanded && customPrompt.trim() ? (
-                <div className="mt-3 max-w-2xl border border-border/70 bg-card">
+                <div className="mt-3 max-w-2xl border border-black/[0.06] bg-card shadow-sm dark:border-white/10">
                   <div className="px-4 py-3">
                     <p className="text-xs leading-5 whitespace-pre-wrap text-muted-foreground line-clamp-3">
                       {customPrompt}

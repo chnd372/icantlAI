@@ -144,6 +144,11 @@ createRoot(document.getElementById("root")!).render(
           </Suspense>
         </BrowserRouter>
         <Toaster />
+        {/* Paper grain over the whole UI — printed-book texture, clicks pass through */}
+        <div
+          aria-hidden
+          className="noise-overlay pointer-events-none fixed inset-0 z-[60] opacity-[0.035]"
+        />
         </ThemeProvider>
       </ConvexAuthProvider>
     </RootErrorBoundary>

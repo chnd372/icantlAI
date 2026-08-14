@@ -51,7 +51,7 @@ export default function Landing() {
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
       {/* Header */}
-      <header className="border-b border-border/70">
+      <header className="sticky top-0 z-40 border-b border-black/[0.06] bg-white/70 backdrop-blur-md dark:border-white/10 dark:bg-black/40">
         <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-6">
           <Link to="/" className="flex items-baseline gap-2">
             <span className="font-display text-lg tracking-tight">
@@ -76,7 +76,19 @@ export default function Landing() {
       </header>
 
       {/* Hero */}
-      <section className="mx-auto w-full max-w-5xl px-6 pt-24 pb-20 sm:pt-32">
+      <section className="relative isolate mx-auto w-full max-w-5xl overflow-hidden px-6 pt-24 pb-20 sm:pt-32">
+        {/* Ambient glow — warm paper light bleeding in from the top corners */}
+        <div
+          aria-hidden
+          className="absolute -top-40 -left-40 -z-10 size-96 rounded-full bg-amber-200/40 blur-[128px] dark:bg-amber-500/10"
+        />
+        <div
+          aria-hidden
+          className="absolute top-20 -right-40 -z-10 size-[500px] rounded-full bg-orange-100/50 blur-[140px] dark:bg-orange-500/10"
+        />
+        {/* Faint dot matrix, fading out toward the edges */}
+        <div aria-hidden className="dot-grid absolute inset-0 -z-10" />
+
         <motion.p
           {...fadeUp}
           className="text-[11px] font-medium tracking-[0.28em] text-muted-foreground uppercase"
