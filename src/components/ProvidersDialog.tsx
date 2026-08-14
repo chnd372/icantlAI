@@ -334,6 +334,12 @@ export function ProvidersDialog({
                   placeholder={BASE_URL_HINTS[form.providerType]}
                   className="rounded-sm border-border/80 font-mono text-xs shadow-none"
                 />
+                <p className="text-[11px] leading-5 text-muted-foreground">
+                  Router/proxy endpoints (OpenRouter, 9Router, …) usually serve
+                  their API under /v1 — e.g.{" "}
+                  <span className="font-mono">https://9router.com/v1</span>, not{" "}
+                  <span className="font-mono">https://9router.com</span>.
+                </p>
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">

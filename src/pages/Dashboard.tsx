@@ -125,10 +125,12 @@ export default function Dashboard() {
   const [viewerId, setViewerId] = useState<Id<"translations"> | null>(null);
   const [viewerCopied, setViewerCopied] = useState(false);
 
-  // Translation instructions (custom prompt), saved to the account
+  // Translation instructions (custom prompt), saved to the account. Long
+  // saved prompts collapse to a few preview lines; expand to edit them.
   const [customPrompt, setCustomPrompt] = useState("");
   const [promptSaved, setPromptSaved] = useState(false);
   const [savingPrompt, setSavingPrompt] = useState(false);
+  const [promptExpanded, setPromptExpanded] = useState(false);
   const promptSynced = useRef(false);
 
   // Batch queue
@@ -563,6 +565,7 @@ export default function Dashboard() {
     try {
       await saveCustomPrompt({ customPrompt });
       setPromptSaved(true);
+      setPromptExpanded(false);
       toast.success("Translation instructions saved — they apply to new runs.");
     } catch (error) {
       toast.error(
@@ -1155,28 +1158,68 @@ export default function Dashboard() {
                 notes, glossary terms, names to keep or change. Where these
                 conflict with the general rules, your instructions win.
               </p>
-              <div className="mt-3 flex flex-col items-start gap-3">
-                <Textarea
-                  value={customPrompt}
-                  onChange={(e) => {
-                    setCustomPrompt(e.target.value);
-                    setPromptSaved(false);
-                  }}
-                  placeholder="e.g., Keep the term “Qi” as-is, translate “Young Miss” as “Nona Muda”, keep battle scenes terse and dialogue casual."
-                  className="max-w-2xl min-h-24 rounded-sm border-border/80 text-sm leading-6 shadow-none"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="rounded-sm border-border/80 bg-transparent shadow-none"
-                  onClick={handleSavePrompt}
-                  disabled={savingPrompt}
-                >
-                  {savingPrompt && <Loader2 className="mr-2 size-3.5 animate-spin" />}
-                  Save instructions
-                </Button>
-              </div>
+              {!promptExpanded && customPrompt.trim() ? (
+                <div className="mt-3 max-w-2xl border border-border/70 bg-card">
+                  <div className="px-4 py-3">
+                    <p className="text-xs leading-5 whitespace-pre-wrap text-muted-foreground line-clamp-3">
+                      {customPrompt}
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 border-t border-border/70 px-4 py-2">
+                    <span className="text-[11px] text-muted-foreground">
+                      Saved instructions — only the first few lines shown here.
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 rounded-sm px-2 text-xs"
+                      onClick={() => setPromptExpanded(true)}
+                    >
+                      <PenLine className="mr-1.5 size-3.5" />
+                      Edit instructions
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-3 flex flex-col items-start gap-3">
+                  <Textarea
+                    value={customPrompt}
+                    onChange={(e) => {
+                      setCustomPrompt(e.target.value);
+                      setPromptSaved(false);
+                    }}
+                    placeholder="e.g., Keep the term “Qi” as-is, translate “Young Miss” as “Nona Muda”, keep battle scenes terse and dialogue casual."
+                    className="max-w-2xl min-h-24 rounded-sm border-border/80 text-sm leading-6 shadow-none"
+                  />
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="rounded-sm border-border/80 bg-transparent shadow-none"
+                      onClick={handleSavePrompt}
+                      disabled={savingPrompt}
+                    >
+                      {savingPrompt && (
+                        <Loader2 className="mr-2 size-3.5 animate-spin" />
+                      )}
+                      Save instructions
+                    </Button>
+                    {customPrompt.trim() && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 rounded-sm px-3 text-xs text-muted-foreground hover:text-foreground"
+                        onClick={() => setPromptExpanded(false)}
+                      >
+                        Cancel
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
             </section>
 
             {/* Batch queue */}

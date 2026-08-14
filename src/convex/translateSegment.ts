@@ -45,7 +45,10 @@ async function callOpenAICompatible(options: CallOptions): Promise<string> {
   if (!response.ok) {
     const detail = (await response.text()).slice(0, 300);
     throw new Error(
-      `Provider error (${response.status}): ${detail || "request failed"}`,
+      `Provider error (${response.status}): ${detail || "request failed"}${baseUrlHint(
+        options.baseUrl,
+        response.status,
+      )}`,
     );
   }
 
@@ -80,7 +83,10 @@ async function callAnthropic(options: CallOptions): Promise<string> {
   if (!response.ok) {
     const detail = (await response.text()).slice(0, 300);
     throw new Error(
-      `Provider error (${response.status}): ${detail || "request failed"}`,
+      `Provider error (${response.status}): ${detail || "request failed"}${baseUrlHint(
+        options.baseUrl,
+        response.status,
+      )}`,
     );
   }
 
@@ -109,6 +115,19 @@ function normalizeBase(baseUrl: string): string {
     .replace(/\/+$/, "")
     .replace(/\/chat\/completions$/i, "")
     .replace(/\/v1\/messages$/i, "");
+}
+
+/**
+ * A short hint appended to 404/405 errors. Router/proxy endpoints
+ * (OpenRouter, 9Router, ...) serve their API under /v1, so a bare root base
+ * URL like https://9router.com/ hits no route and fails confusingly — the
+ * fix is a /v1 suffix.
+ */
+function baseUrlHint(baseUrl: string, status: number): string {
+  if (status !== 404 && status !== 405) return "";
+  const base = baseUrl.replace(/\/+$/, "");
+  if (/\/v1$/i.test(base) || /\/api$/i.test(base)) return "";
+  return " Check the base URL — router/proxy endpoints like OpenRouter or 9Router usually need a /v1 suffix (e.g. https://9router.com/v1).";
 }
 
 /** List model IDs available at an OpenAI- or Anthropic-compatible endpoint. */
@@ -143,7 +162,10 @@ async function listModels(
   if (!response.ok) {
     const detail = (await response.text()).slice(0, 300);
     throw new Error(
-      `Could not list models (${response.status}): ${detail || "request failed"}`,
+      `Could not list models (${response.status}): ${detail || "request failed"}${baseUrlHint(
+        baseUrl,
+        response.status,
+      )}`,
     );
   }
 
