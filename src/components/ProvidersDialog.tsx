@@ -273,7 +273,7 @@ export function ProvidersDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="rounded-sm sm:max-w-lg">
+      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-sm p-5 sm:max-w-lg sm:p-6">
         <DialogHeader>
           <DialogTitle>AI providers</DialogTitle>
           <DialogDescription>
@@ -428,7 +428,7 @@ export function ProvidersDialog({
               </p>
             </div>
 
-            <DialogFooter className="gap-2">
+            <DialogFooter className="flex-col items-stretch gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
               <Button
                 type="button"
                 variant="ghost"

@@ -87,7 +87,7 @@ export default function Landing() {
         <motion.h1
           {...fadeUp}
           transition={{ duration: 0.6, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
-          className="font-display mt-6 max-w-2xl text-5xl leading-[1.05] tracking-tight text-balance sm:text-6xl"
+          className="font-display mt-6 max-w-2xl text-4xl leading-[1.05] tracking-tight text-balance sm:text-5xl lg:text-6xl"
         >
           Chapters, translated and kept.
         </motion.h1>

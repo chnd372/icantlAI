@@ -683,17 +683,88 @@ export default function Dashboard() {
     <main className="min-h-screen bg-background text-foreground">
       {/* Top bar */}
       <header className="sticky top-0 z-40 border-b border-border/70 bg-background/90 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
-          <div className="flex items-center gap-3">
-            <span className="font-display text-lg tracking-tight">
-              Ican Translator AI
-            </span>
-            <span className="hidden text-[11px] font-medium tracking-[0.22em] text-muted-foreground uppercase md:inline">
-              Personal studio
-            </span>
+        <div className="mx-auto flex max-w-7xl flex-col px-4 sm:px-6">
+          {/* Row 1: brand + quick actions */}
+          <div className="flex h-14 items-center justify-between gap-3 sm:h-16">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="font-display truncate text-lg tracking-tight">
+                Ican Translator AI
+              </span>
+              <span className="hidden text-[11px] font-medium tracking-[0.22em] text-muted-foreground uppercase md:inline">
+                Personal studio
+              </span>
+            </div>
+
+            <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
+              {/* Provider controls (desktop) */}
+              <div className="hidden items-center gap-2 lg:flex">
+                <Select
+                  value={selectedProviderId || undefined}
+                  onValueChange={(v) =>
+                    setSelectedProviderId(v as Id<"aiProviders">)
+                  }
+                >
+                  <SelectTrigger
+                    size="sm"
+                    className="w-fit max-w-56 rounded-sm border-border/80 bg-transparent text-xs"
+                    aria-label="AI provider"
+                  >
+                    <SelectValue placeholder="No provider" />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-sm">
+                    {providers && providers.length > 0 ? (
+                      <SelectGroup>
+                        <SelectLabel>Your providers</SelectLabel>
+                        {providers.map((p) => (
+                          <SelectItem key={p._id} value={p._id}>
+                            {p.name}
+                            {p.modelId ? ` · ${p.modelId}` : " · any model"}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    ) : (
+                      <div className="px-3 py-3 text-xs text-muted-foreground">
+                        No providers yet — add one with the gear icon.
+                      </div>
+                    )}
+                  </SelectContent>
+                </Select>
+
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-8 rounded-sm text-muted-foreground hover:text-foreground"
+                  aria-label="Manage AI providers"
+                  onClick={() => setProvidersOpen(true)}
+                >
+                  <Settings2 className="size-4" />
+                </Button>
+
+                {user?.name && (
+                  <span className="text-xs text-muted-foreground">
+                    {user.name}
+                  </span>
+                )}
+              </div>
+
+              <ThemeToggle />
+
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="rounded-sm px-2 text-xs text-muted-foreground hover:text-foreground sm:px-3"
+                onClick={handleSignOut}
+              >
+                <LogOut className="mr-1.5 size-3.5" />
+                <span className="hidden sm:inline">Sign out</span>
+              </Button>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-3">
+          {/* Row 2: provider controls (mobile) */}
+          <div className="flex items-center gap-2 pb-3 lg:hidden">
             <Select
               value={selectedProviderId || undefined}
               onValueChange={(v) =>
@@ -702,7 +773,7 @@ export default function Dashboard() {
             >
               <SelectTrigger
                 size="sm"
-                className="w-fit max-w-56 rounded-sm border-border/80 bg-transparent text-xs"
+                className="w-full min-w-0 flex-1 rounded-sm border-border/80 bg-transparent text-xs"
                 aria-label="AI provider"
               >
                 <SelectValue placeholder="No provider" />
@@ -730,30 +801,18 @@ export default function Dashboard() {
               type="button"
               variant="ghost"
               size="icon"
-              className="size-8 rounded-sm text-muted-foreground hover:text-foreground"
+              className="size-8 shrink-0 rounded-sm text-muted-foreground hover:text-foreground"
               aria-label="Manage AI providers"
               onClick={() => setProvidersOpen(true)}
             >
               <Settings2 className="size-4" />
             </Button>
 
-            <ThemeToggle />
-
             {user?.name && (
-              <span className="hidden text-xs text-muted-foreground lg:inline">
+              <span className="hidden truncate text-xs text-muted-foreground sm:inline">
                 {user.name}
               </span>
             )}
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="rounded-sm text-xs text-muted-foreground hover:text-foreground"
-              onClick={handleSignOut}
-            >
-              <LogOut className="mr-1.5 size-3.5" />
-              Sign out
-            </Button>
           </div>
         </div>
       </header>
@@ -1036,8 +1095,8 @@ export default function Dashboard() {
             </div>
 
             {/* Action bar */}
-            <div className="mt-6 flex flex-wrap items-end gap-x-4 gap-y-3">
-              <div className="flex flex-col gap-1.5">
+            <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end sm:gap-x-4 sm:gap-y-3">
+              <div className="flex flex-col gap-1.5 sm:w-auto">
                 <span className="text-[10px] font-medium tracking-[0.18em] text-muted-foreground uppercase">
                   Series
                 </span>
@@ -1045,22 +1104,19 @@ export default function Dashboard() {
                   value={novelName}
                   onChange={(e) => setNovelName(e.target.value)}
                   placeholder="Novel / series (optional)"
-                  className="w-full max-w-52 rounded-sm border-border/80 bg-card text-sm shadow-none"
+                  className="w-full rounded-sm border-border/80 bg-card text-sm shadow-none sm:max-w-52"
                   disabled={queueBusy}
                 />
               </div>
 
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-1.5 sm:w-auto">
                 <span className="text-[10px] font-medium tracking-[0.18em] text-muted-foreground uppercase">
                   Source language
                 </span>
-                <Select
-                  value={sourceLang}
-                  onValueChange={setSourceLang}
-                >
+                <Select value={sourceLang} onValueChange={setSourceLang}>
                   <SelectTrigger
                     size="sm"
-                    className="w-36 rounded-sm border-border/80 bg-card text-xs shadow-none"
+                    className="w-full rounded-sm border-border/80 bg-card text-xs shadow-none sm:w-36"
                   >
                     <SelectValue />
                   </SelectTrigger>
@@ -1074,17 +1130,14 @@ export default function Dashboard() {
                 </Select>
               </div>
 
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-1.5 sm:w-auto">
                 <span className="text-[10px] font-medium tracking-[0.18em] text-muted-foreground uppercase">
                   Output language
                 </span>
-                <Select
-                  value={targetLang}
-                  onValueChange={setTargetLang}
-                >
+                <Select value={targetLang} onValueChange={setTargetLang}>
                   <SelectTrigger
                     size="sm"
-                    className="w-40 rounded-sm border-border/80 bg-card text-xs shadow-none"
+                    className="w-full rounded-sm border-border/80 bg-card text-xs shadow-none sm:w-40"
                   >
                     <SelectValue />
                   </SelectTrigger>
@@ -1098,37 +1151,39 @@ export default function Dashboard() {
                 </Select>
               </div>
 
-              <Button
-                type="button"
-                className="rounded-sm px-6 shadow-none hover:bg-foreground/90"
-                disabled={!canTranslate}
-                onClick={handleTranslate}
-              >
-                {running ? (
-                  <>
-                    <Loader2 className="mr-2 size-4 animate-spin" />
-                    Translating…
-                  </>
-                ) : (
-                  <>
-                    Translate chapter
-                    <ArrowRight className="ml-2 size-4" />
-                  </>
-                )}
-              </Button>
-              {hasPending && !queueBusy && (
+              <div className="flex flex-col gap-3 sm:ml-auto sm:flex-row sm:items-center">
                 <Button
                   type="button"
-                  variant="outline"
-                  className="rounded-sm border-border/80 bg-transparent shadow-none"
-                  onClick={handleResume}
+                  className="w-full justify-center rounded-sm px-6 shadow-none hover:bg-foreground/90 sm:w-auto"
+                  disabled={!canTranslate}
+                  onClick={handleTranslate}
                 >
-                  <RefreshCw className="mr-2 size-3.5" />
-                  Resume
+                  {running ? (
+                    <>
+                      <Loader2 className="mr-2 size-4 animate-spin" />
+                      Translating…
+                    </>
+                  ) : (
+                    <>
+                      Translate chapter
+                      <ArrowRight className="ml-2 size-4" />
+                    </>
+                  )}
                 </Button>
-              )}
+                {hasPending && !queueBusy && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full justify-center rounded-sm border-border/80 bg-transparent shadow-none sm:w-auto"
+                    onClick={handleResume}
+                  >
+                    <RefreshCw className="mr-2 size-3.5" />
+                    Resume
+                  </Button>
+                )}
+              </div>
               {!queueBusy && active && status === "done" && (
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs text-muted-foreground sm:w-full">
                   Filed under{" "}
                   <span className="font-medium text-foreground">
                     {active.translation.novelName ?? active.translation.title ?? "Catalog"}
@@ -1447,7 +1502,7 @@ export default function Dashboard() {
                           type="button"
                           variant="ghost"
                           size="icon"
-                          className="size-7 rounded-sm text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                          className="size-7 rounded-sm text-muted-foreground opacity-100 group-hover:opacity-100 focus-visible:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
                           aria-label="Remove chapter"
                           onClick={(e) => {
                             e.stopPropagation();
@@ -1477,8 +1532,8 @@ export default function Dashboard() {
           if (!open) setViewerId(null);
         }}
       >
-        <DialogContent className="max-w-2xl rounded-sm">
-          <DialogHeader>
+        <DialogContent className="flex max-h-[calc(100dvh-2rem)] max-w-2xl flex-col overflow-hidden rounded-sm p-5 sm:max-w-2xl sm:p-6">
+          <DialogHeader className="shrink-0">
             <DialogTitle className="pr-8">
               {viewer?.translation.title ?? viewer?.translation.fileName ?? "Chapter"}
             </DialogTitle>
@@ -1499,7 +1554,7 @@ export default function Dashboard() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="max-h-[52vh] overflow-y-auto border-y border-border/70 px-5 py-4">
+          <div className="min-h-0 flex-1 overflow-y-auto border-y border-border/70 px-5 py-4">
             {viewerText ? (
               <div className="font-display text-[15px] leading-7 whitespace-pre-wrap">
                 {viewerText}
@@ -1517,8 +1572,8 @@ export default function Dashboard() {
             )}
           </div>
 
-          <DialogFooter className="flex-wrap items-center gap-2">
-            <span className="mr-auto text-[11px] text-muted-foreground">
+          <DialogFooter className="flex-col items-stretch gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+            <span className="text-[11px] text-muted-foreground sm:mr-auto">
               {viewerText ? `${countWords(viewerText).toLocaleString()} words` : ""}
             </span>
             <Button
@@ -1570,7 +1625,7 @@ export default function Dashboard() {
 
       {/* Import dialog */}
       <Dialog open={importOpen} onOpenChange={setImportOpen}>
-        <DialogContent className="rounded-sm sm:max-w-lg">
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-sm p-5 sm:max-w-lg sm:p-6">
           <DialogHeader>
             <DialogTitle>Import a chapter</DialogTitle>
             <DialogDescription>
@@ -1634,7 +1689,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <DialogFooter className="gap-2">
+          <DialogFooter className="flex-col items-stretch gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
             <Button
               type="button"
               variant="ghost"
