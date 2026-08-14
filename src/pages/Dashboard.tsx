@@ -349,7 +349,9 @@ export default function Dashboard() {
       sourceLang,
       targetLang,
       providerId: selectedProviderId as Id<"aiProviders">,
-      model: chosenProvider.modelId ?? "",
+      // No fixed Model ID? Fall back to the provider name so the catalog
+      // still shows what produced the chapter.
+      model: chosenProvider.modelId ?? chosenProvider.name,
     };
 
     try {
@@ -425,7 +427,7 @@ export default function Dashboard() {
         sourceLang,
         targetLang,
         providerId: selectedProviderId as Id<"aiProviders">,
-        model: chosenProvider.modelId ?? "",
+        model: chosenProvider.modelId ?? chosenProvider.name,
       };
 
       try {

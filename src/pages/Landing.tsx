@@ -289,9 +289,10 @@ export default function Landing() {
             </h3>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
               Connect any OpenAI- or Anthropic-compatible endpoint with a base
-              URL, an API key, and a model ID — OpenRouter, DeepSeek, a local
-              server, wherever you already run models. Every translation runs
-              on your own providers.
+              URL and an API key — OpenRouter, DeepSeek, a local server,
+              wherever you already run models. The model list is pulled straight
+              from your endpoint, so any model you want is one pick away. Every
+              translation runs on your own providers.
             </p>
           </motion.div>
           <motion.div
