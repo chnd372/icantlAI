@@ -4,6 +4,7 @@ import { useAction, useConvex, useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
 import {
   ArrowRight,
+  BookOpen,
   Check,
   Copy,
   Download,
@@ -11,11 +12,22 @@ import {
   Loader2,
   LogOut,
   RefreshCw,
+  Search,
   Trash2,
   Upload,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -23,6 +35,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useAuth } from "@/hooks/use-auth";
@@ -50,12 +63,20 @@ function baseName(fileName: string) {
   return fileName.replace(/\.(txt|md|text)$/i, "");
 }
 
+function modelLabel(model: string) {
+  return model === "imported" ? "Imported" : model;
+}
+
+type Tab = "translate" | "catalog";
+
 export default function Dashboard() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const convex = useConvex();
 
+  const [tab, setTab] = useState<Tab>("translate");
   const [model, setModel] = useState<string>("gpt-4o-mini");
+  const [novelName, setNovelName] = useState("");
   const [localSource, setLocalSource] = useState<string | null>(null);
   const [localFileName, setLocalFileName] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<Id<"translations"> | null>(null);
@@ -63,11 +84,21 @@ export default function Dashboard() {
   const [copied, setCopied] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<Id<"translations"> | null>(null);
 
+  // Catalog search
+  const [query, setQuery] = useState("");
+  // Import dialog
+  const [importOpen, setImportOpen] = useState(false);
+  const [importTitle, setImportTitle] = useState("");
+  const [importNovel, setImportNovel] = useState("");
+  const [importSource, setImportSource] = useState("");
+  const [importText, setImportText] = useState("");
+
   const runningRef = useRef(false);
   const [running, setRunning] = useState(false);
 
   const createTranslation = useMutation(api.translations.createTranslation);
   const startTranslation = useMutation(api.translations.startTranslation);
+  const importChapter = useMutation(api.translations.importChapter);
   const translateSegmentAction = useAction(api.translateSegment.translateSegment);
   const deleteTranslation = useMutation(api.translations.deleteTranslation);
 
@@ -93,6 +124,20 @@ export default function Dashboard() {
       ? active.translation.completedSegments / active.translation.segmentCount
       : 0
     : 0;
+
+  const filtered = useMemo(() => {
+    if (!translations) return [];
+    const q = query.trim().toLowerCase();
+    if (!q) return translations;
+    return translations.filter(
+      (t) =>
+        (t.title ?? "").toLowerCase().includes(q) ||
+        (t.novelName ?? "").toLowerCase().includes(q) ||
+        t.fileName.toLowerCase().includes(q) ||
+        t.sourcePreview.toLowerCase().includes(q) ||
+        t.model.toLowerCase().includes(q),
+    );
+  }, [translations, query]);
 
   const handleSignOut = async () => {
     await signOut();
@@ -135,7 +180,7 @@ export default function Dashboard() {
             model: modelName,
           });
         }
-        toast.success("Chapter translated.");
+        toast.success("Chapter translated and filed in your catalog.");
       } catch (error) {
         toast.error(
           error instanceof Error
@@ -167,6 +212,7 @@ export default function Dashboard() {
       const id = await createTranslation({
         fileName: displayFileName ?? "chapter.txt",
         title: extractTitle(displaySource) ?? undefined,
+        novelName: novelName.trim() || undefined,
         sourceText: displaySource,
         model,
         segments: segments.map((s) => ({ index: s.index, sourceText: s.sourceText })),
@@ -203,7 +249,7 @@ export default function Dashboard() {
     );
   };
 
-  const handleLoadHistory = async (id: Id<"translations">) => {
+  const handleOpenInTranslator = async (id: Id<"translations">) => {
     if (runningRef.current) return;
     try {
       const full = await convex.query(api.translations.getTranslation, {
@@ -212,7 +258,9 @@ export default function Dashboard() {
       if (!full) return;
       setLocalSource(full.translation.sourceText);
       setLocalFileName(full.translation.fileName);
+      setNovelName(full.translation.novelName ?? "");
       setActiveId(id);
+      setTab("translate");
       setConfirmDeleteId(null);
     } catch {
       toast.error("Could not load that chapter.");
@@ -234,7 +282,7 @@ export default function Dashboard() {
       setLocalFileName(null);
     }
     setConfirmDeleteId(null);
-    toast.success("Chapter deleted.");
+    toast.success("Chapter removed from your catalog.");
   };
 
   const handleCopy = async () => {
@@ -260,6 +308,30 @@ export default function Dashboard() {
     URL.revokeObjectURL(url);
   };
 
+  const handleImport = async () => {
+    const title = importTitle.trim();
+    const text = importText.trim();
+    if (!title || !text) return;
+    try {
+      await importChapter({
+        fileName: `${title}.txt`,
+        title,
+        novelName: importNovel.trim() || undefined,
+        sourceText: importSource.trim() || undefined,
+        translatedText: text,
+        model: "imported",
+      });
+      setImportOpen(false);
+      setImportTitle("");
+      setImportNovel("");
+      setImportSource("");
+      setImportText("");
+      toast.success("Added to your catalog.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not add the chapter.");
+    }
+  };
+
   const status = active?.translation.status ?? "idle";
   const canTranslate = !!displaySource && !running;
   const hasPending = active
@@ -272,9 +344,11 @@ export default function Dashboard() {
       <header className="sticky top-0 z-40 border-b border-border/70 bg-background/90 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
           <div className="flex items-center gap-3">
-            <span className="font-display text-lg tracking-tight">Laras</span>
-            <span className="hidden text-[11px] font-medium tracking-[0.22em] text-muted-foreground uppercase sm:inline">
-              Studio
+            <span className="font-display text-lg tracking-tight">
+              Novel Translator App
+            </span>
+            <span className="hidden text-[11px] font-medium tracking-[0.22em] text-muted-foreground uppercase md:inline">
+              Personal studio
             </span>
           </div>
 
@@ -297,7 +371,7 @@ export default function Dashboard() {
             </Select>
 
             {user?.name && (
-              <span className="hidden text-xs text-muted-foreground md:inline">
+              <span className="hidden text-xs text-muted-foreground lg:inline">
                 {user.name}
               </span>
             )}
@@ -316,342 +390,514 @@ export default function Dashboard() {
       </header>
 
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
-        {/* Source / Translation panels */}
-        <div className="grid gap-6 lg:grid-cols-2">
-          {/* Source */}
-          <section className="flex flex-col border border-border/70 bg-card">
-            <div className="flex items-center justify-between border-b border-border/70 px-5 py-3.5">
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-medium tracking-[0.24em] text-muted-foreground uppercase">
-                  Source
-                </span>
-                {displaySource && (
-                  <span className="text-[11px] text-muted-foreground">
-                    {countWords(displaySource).toLocaleString()} words
-                  </span>
-                )}
-              </div>
-              {displayFileName && (
-                <span className="max-w-[40%] truncate text-[11px] text-muted-foreground">
-                  {displayFileName}
-                </span>
-              )}
-            </div>
-
-            {displaySource ? (
-              <div className="flex flex-1 flex-col">
-                <div className="max-h-[52vh] flex-1 overflow-y-auto px-5 py-4">
-                  <pre className="font-display text-[15px] leading-7 whitespace-pre-wrap">
-                    {displaySource}
-                  </pre>
-                </div>
-                <div className="flex items-center justify-between border-t border-border/70 px-5 py-2.5">
-                  <span className="text-[11px] text-muted-foreground">
-                    {displaySource.length.toLocaleString()} characters
-                  </span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 rounded-sm px-2 text-xs text-muted-foreground hover:text-foreground"
-                    disabled={running}
-                    onClick={() => {
-                      setLocalSource(null);
-                      setLocalFileName(null);
-                      setActiveId(null);
-                    }}
-                  >
-                    <Upload className="mr-1.5 size-3.5" />
-                    Replace
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <label
-                className={cn(
-                  "flex flex-1 cursor-pointer flex-col items-center justify-center gap-3 px-8 py-20 text-center transition-colors",
-                  dragOver ? "bg-muted/70" : "hover:bg-muted/40",
-                )}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setDragOver(true);
-                }}
-                onDragLeave={() => setDragOver(false)}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setDragOver(false);
-                  const file = e.dataTransfer.files?.[0];
-                  if (file) void handleFile(file);
-                }}
-              >
-                <input
-                  type="file"
-                  accept=".txt,.md,.text,text/plain,text/markdown"
-                  className="hidden"
-                  disabled={running}
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) void handleFile(file);
-                    e.target.value = "";
-                  }}
-                />
-                <div className="flex size-10 items-center justify-center rounded-sm border border-border/70 bg-background">
-                  <FileText className="size-4 text-muted-foreground" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium">Drop a chapter file here</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    or click to browse · .txt or .md · under 250 KB
-                  </p>
-                </div>
-              </label>
-            )}
-          </section>
-
-          {/* Translation */}
-          <section className="flex flex-col border border-border/70 bg-card">
-            <div className="flex items-center justify-between border-b border-border/70 px-5 py-3.5">
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-medium tracking-[0.24em] text-muted-foreground uppercase">
-                  Translation
-                </span>
-                {active && (
-                  <span className="text-[11px] text-muted-foreground">
-                    {active.translation.model}
-                  </span>
-                )}
-              </div>
-              {active && (
-                <span
-                  className={cn(
-                    "text-[11px] font-medium tracking-wide",
-                    status === "done" && "text-foreground",
-                    status === "translating" && "text-muted-foreground",
-                    status === "error" && "text-destructive",
-                    status === "draft" && "text-muted-foreground",
-                  )}
-                >
-                  {status === "translating" &&
-                    `${active.translation.completedSegments} of ${active.translation.segmentCount} segments`}
-                  {status === "done" && "Done"}
-                  {status === "draft" && "Ready"}
-                  {status === "error" && "Interrupted"}
-                </span>
-              )}
-            </div>
-
-            {!active ? (
-              <div className="flex flex-1 flex-col items-center justify-center gap-2 px-8 py-20 text-center">
-                <p className="text-sm font-medium">The translation will appear here</p>
-                <p className="max-w-xs text-xs leading-5 text-muted-foreground">
-                  Upload a chapter, then press{" "}
-                  <span className="font-medium text-foreground">
-                    Translate chapter
-                  </span>
-                  . It comes through segment by segment.
-                </p>
-              </div>
-            ) : (
-              <div className="flex flex-1 flex-col">
-                {active.translation.error && (
-                  <div className="mx-5 mt-4 border border-destructive/40 bg-destructive/5 px-4 py-3 text-xs leading-5 text-destructive">
-                    {active.translation.error}
-                  </div>
-                )}
-
-                <div className="max-h-[52vh] flex-1 overflow-y-auto px-5 py-4">
-                  {translatedText ? (
-                    <div className="font-display text-[15px] leading-7 whitespace-pre-wrap">
-                      {translatedText}
-                      {status === "translating" && (
-                        <span className="ml-0.5 inline-block h-[1.1em] w-[2px] animate-pulse bg-foreground/70 align-middle" />
-                      )}
-                    </div>
-                  ) : (
-                    <div className="space-y-3 pt-1">
-                      {Array.from({ length: 6 }).map((_, i) => (
-                        <div
-                          key={i}
-                          className="h-4 animate-pulse rounded-sm bg-muted"
-                          style={{ width: `${88 - (i % 4) * 12}%` }}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Progress */}
-                <div className="border-t border-border/70">
-                  <div className="h-[2px] w-full bg-muted">
-                    <div
-                      className="h-full bg-foreground transition-[width] duration-500"
-                      style={{ width: `${Math.round(progress * 100)}%` }}
-                    />
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2 px-5 py-2.5">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 rounded-sm px-2 text-xs"
-                      disabled={!translatedText}
-                      onClick={handleCopy}
-                    >
-                      {copied ? (
-                        <>
-                          <Check className="mr-1.5 size-3.5" /> Copied
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="mr-1.5 size-3.5" /> Copy
-                        </>
-                      )}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 rounded-sm px-2 text-xs"
-                      disabled={!translatedText}
-                      onClick={handleDownload}
-                    >
-                      <Download className="mr-1.5 size-3.5" /> Download .txt
-                    </Button>
-                    <span className="ml-auto hidden text-[11px] text-muted-foreground sm:inline">
-                      {countWords(translatedText).toLocaleString()} words · Indonesian
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
-          </section>
-        </div>
-
-        {/* Action bar */}
-        <div className="mt-6 flex flex-wrap items-center gap-3">
-          <Button
+        {/* Tabs */}
+        <div className="flex items-center gap-6 border-b border-border/70">
+          <button
             type="button"
-            className="rounded-sm px-6 shadow-none hover:bg-foreground/90"
-            disabled={!canTranslate}
-            onClick={handleTranslate}
-          >
-            {running ? (
-              <>
-                <Loader2 className="mr-2 size-4 animate-spin" />
-                Translating…
-              </>
-            ) : (
-              <>
-                Translate chapter
-                <ArrowRight className="ml-2 size-4" />
-              </>
+            onClick={() => setTab("translate")}
+            className={cn(
+              "-mb-px border-b-2 px-1 pb-3 text-sm transition-colors",
+              tab === "translate"
+                ? "border-foreground font-medium text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground",
             )}
-          </Button>
-          {hasPending && !running && (
-            <Button
-              type="button"
-              variant="outline"
-              className="rounded-sm border-border/80 bg-transparent shadow-none"
-              onClick={handleResume}
-            >
-              <RefreshCw className="mr-2 size-3.5" />
-              Resume
-            </Button>
-          )}
-          {!running && active && status === "done" && (
-            <p className="text-xs text-muted-foreground">
-              Press{" "}
-              <span className="font-medium text-foreground">
-                Translate chapter
-              </span>{" "}
-              to run it again with a different model.
-            </p>
-          )}
+          >
+            Translate
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("catalog")}
+            className={cn(
+              "-mb-px flex items-center gap-2 border-b-2 px-1 pb-3 text-sm transition-colors",
+              tab === "catalog"
+                ? "border-foreground font-medium text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground",
+            )}
+          >
+            Catalog
+            {translations && translations.length > 0 && (
+              <span className="rounded-sm bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                {translations.length}
+              </span>
+            )}
+          </button>
         </div>
 
-        {/* History */}
-        <section className="mt-12 border-t border-border/70 pt-8">
-          <div className="flex items-center justify-between">
-            <h2 className="text-[11px] font-medium tracking-[0.24em] text-muted-foreground uppercase">
-              Recent chapters
-            </h2>
-            <span className="text-[11px] text-muted-foreground">
-              {translations ? translations.length : "—"} saved
-            </span>
-          </div>
-
-          {translations && translations.length > 0 ? (
-            <ul className="mt-4 divide-y divide-border/70 border-y border-border/70">
-              {translations.map((t) => (
-                <li key={t._id}>
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    className={cn(
-                      "group grid cursor-pointer grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1 px-2 py-3 transition-colors hover:bg-muted/50",
-                      activeId === t._id && "bg-muted/60",
+        {tab === "translate" ? (
+          <div className="pt-6">
+            {/* Source / Translation panels */}
+            <div className="grid gap-6 lg:grid-cols-2">
+              {/* Source */}
+              <section className="flex flex-col border border-border/70 bg-card">
+                <div className="flex items-center justify-between border-b border-border/70 px-5 py-3.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-medium tracking-[0.24em] text-muted-foreground uppercase">
+                      Source
+                    </span>
+                    {displaySource && (
+                      <span className="text-[11px] text-muted-foreground">
+                        {countWords(displaySource).toLocaleString()} words
+                      </span>
                     )}
-                    onClick={() => void handleLoadHistory(t._id)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        void handleLoadHistory(t._id);
-                      }
-                    }}
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">
-                        {t.title ?? t.fileName}
-                      </p>
-                      <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
-                        {t.fileName} · {t.model} · {formatDate(t.createdAt)}
-                        {t.status !== "done" &&
-                          ` · ${t.completedSegments}/${t.segmentCount}`}
-                      </p>
+                  </div>
+                  {displayFileName && (
+                    <span className="max-w-[40%] truncate text-[11px] text-muted-foreground">
+                      {displayFileName}
+                    </span>
+                  )}
+                </div>
+
+                {displaySource ? (
+                  <div className="flex flex-1 flex-col">
+                    <div className="max-h-[52vh] flex-1 overflow-y-auto px-5 py-4">
+                      <pre className="font-display text-[15px] leading-7 whitespace-pre-wrap">
+                        {displaySource}
+                      </pre>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={cn(
-                          "text-[10px] font-medium tracking-[0.18em] uppercase",
-                          t.status === "done" && "text-foreground",
-                          t.status === "translating" && "text-muted-foreground",
-                          t.status === "error" && "text-destructive",
-                          t.status === "draft" && "text-muted-foreground",
-                        )}
-                      >
-                        {t.status}
+                    <div className="flex items-center justify-between border-t border-border/70 px-5 py-2.5">
+                      <span className="text-[11px] text-muted-foreground">
+                        {displaySource.length.toLocaleString()} characters
                       </span>
                       <Button
                         type="button"
                         variant="ghost"
-                        size="icon"
-                        className="size-7 rounded-sm text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                        aria-label="Delete chapter"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          void handleDelete(t._id);
+                        size="sm"
+                        className="h-7 rounded-sm px-2 text-xs text-muted-foreground hover:text-foreground"
+                        disabled={running}
+                        onClick={() => {
+                          setLocalSource(null);
+                          setLocalFileName(null);
+                          setActiveId(null);
+                          setNovelName("");
                         }}
                       >
-                        {confirmDeleteId === t._id ? (
-                          <span className="text-[10px] font-medium">Sure?</span>
-                        ) : (
-                          <Trash2 className="size-3.5" />
-                        )}
+                        <Upload className="mr-1.5 size-3.5" />
+                        Replace
                       </Button>
                     </div>
                   </div>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-4 border-y border-border/70 py-8 text-center text-xs text-muted-foreground">
-              {translations === undefined
-                ? "Loading…"
-                : "No chapters yet. Upload a file to begin."}
-            </p>
-          )}
-        </section>
+                ) : (
+                  <label
+                    className={cn(
+                      "flex flex-1 cursor-pointer flex-col items-center justify-center gap-3 px-8 py-20 text-center transition-colors",
+                      dragOver ? "bg-muted/70" : "hover:bg-muted/40",
+                    )}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setDragOver(true);
+                    }}
+                    onDragLeave={() => setDragOver(false)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setDragOver(false);
+                      const file = e.dataTransfer.files?.[0];
+                      if (file) void handleFile(file);
+                    }}
+                  >
+                    <input
+                      type="file"
+                      accept=".txt,.md,.text,text/plain,text/markdown"
+                      className="hidden"
+                      disabled={running}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) void handleFile(file);
+                        e.target.value = "";
+                      }}
+                    />
+                    <div className="flex size-10 items-center justify-center rounded-sm border border-border/70 bg-background">
+                      <FileText className="size-4 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">Drop a chapter file here</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        or click to browse · .txt or .md · under 250 KB
+                      </p>
+                    </div>
+                  </label>
+                )}
+              </section>
+
+              {/* Translation */}
+              <section className="flex flex-col border border-border/70 bg-card">
+                <div className="flex items-center justify-between border-b border-border/70 px-5 py-3.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-medium tracking-[0.24em] text-muted-foreground uppercase">
+                      Translation
+                    </span>
+                    {active && (
+                      <span className="text-[11px] text-muted-foreground">
+                        {modelLabel(active.translation.model)}
+                      </span>
+                    )}
+                  </div>
+                  {active && (
+                    <span
+                      className={cn(
+                        "text-[11px] font-medium tracking-wide",
+                        status === "done" && "text-foreground",
+                        (status === "translating" || status === "draft") &&
+                          "text-muted-foreground",
+                        status === "error" && "text-destructive",
+                      )}
+                    >
+                      {status === "translating" &&
+                        `${active.translation.completedSegments} of ${active.translation.segmentCount} segments`}
+                      {status === "done" && "Done"}
+                      {status === "draft" && "Ready"}
+                      {status === "error" && "Interrupted"}
+                    </span>
+                  )}
+                </div>
+
+                {!active ? (
+                  <div className="flex flex-1 flex-col items-center justify-center gap-2 px-8 py-20 text-center">
+                    <p className="text-sm font-medium">The translation will appear here</p>
+                    <p className="max-w-xs text-xs leading-5 text-muted-foreground">
+                      Upload a chapter, then press{" "}
+                      <span className="font-medium text-foreground">
+                        Translate chapter
+                      </span>
+                      . It comes through segment by segment.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex flex-1 flex-col">
+                    {active.translation.error && (
+                      <div className="mx-5 mt-4 border border-destructive/40 bg-destructive/5 px-4 py-3 text-xs leading-5 text-destructive">
+                        {active.translation.error}
+                      </div>
+                    )}
+
+                    <div className="max-h-[52vh] flex-1 overflow-y-auto px-5 py-4">
+                      {translatedText ? (
+                        <div className="font-display text-[15px] leading-7 whitespace-pre-wrap">
+                          {translatedText}
+                          {status === "translating" && (
+                            <span className="ml-0.5 inline-block h-[1.1em] w-[2px] animate-pulse bg-foreground/70 align-middle" />
+                          )}
+                        </div>
+                      ) : (
+                        <div className="space-y-3 pt-1">
+                          {Array.from({ length: 6 }).map((_, i) => (
+                            <div
+                              key={i}
+                              className="h-4 animate-pulse rounded-sm bg-muted"
+                              style={{ width: `${88 - (i % 4) * 12}%` }}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Progress */}
+                    <div className="border-t border-border/70">
+                      <div className="h-[2px] w-full bg-muted">
+                        <div
+                          className="h-full bg-foreground transition-[width] duration-500"
+                          style={{ width: `${Math.round(progress * 100)}%` }}
+                        />
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 px-5 py-2.5">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 rounded-sm px-2 text-xs"
+                          disabled={!translatedText}
+                          onClick={handleCopy}
+                        >
+                          {copied ? (
+                            <>
+                              <Check className="mr-1.5 size-3.5" /> Copied
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="mr-1.5 size-3.5" /> Copy
+                            </>
+                          )}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 rounded-sm px-2 text-xs"
+                          disabled={!translatedText}
+                          onClick={handleDownload}
+                        >
+                          <Download className="mr-1.5 size-3.5" /> Download .txt
+                        </Button>
+                        <span className="ml-auto hidden text-[11px] text-muted-foreground sm:inline">
+                          {countWords(translatedText).toLocaleString()} words · Indonesian
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </section>
+            </div>
+
+            {/* Action bar */}
+            <div className="mt-6 flex flex-wrap items-center gap-3">
+              <Input
+                value={novelName}
+                onChange={(e) => setNovelName(e.target.value)}
+                placeholder="Novel / series (optional)"
+                className="w-full max-w-56 rounded-sm border-border/80 bg-card text-sm shadow-none"
+                disabled={running}
+              />
+              <Button
+                type="button"
+                className="rounded-sm px-6 shadow-none hover:bg-foreground/90"
+                disabled={!canTranslate}
+                onClick={handleTranslate}
+              >
+                {running ? (
+                  <>
+                    <Loader2 className="mr-2 size-4 animate-spin" />
+                    Translating…
+                  </>
+                ) : (
+                  <>
+                    Translate chapter
+                    <ArrowRight className="ml-2 size-4" />
+                  </>
+                )}
+              </Button>
+              {hasPending && !running && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="rounded-sm border-border/80 bg-transparent shadow-none"
+                  onClick={handleResume}
+                >
+                  <RefreshCw className="mr-2 size-3.5" />
+                  Resume
+                </Button>
+              )}
+              {!running && active && status === "done" && (
+                <p className="text-xs text-muted-foreground">
+                  Filed under{" "}
+                  <span className="font-medium text-foreground">
+                    {active.translation.novelName ?? active.translation.title ?? "Catalog"}
+                  </span>
+                  . Find it in the catalog tab.
+                </p>
+              )}
+            </div>
+          </div>
+        ) : (
+          /* Catalog */
+          <div className="pt-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="relative w-full max-w-sm">
+                <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search your catalog…"
+                  className="rounded-sm border-border/80 bg-card pl-9 text-sm shadow-none"
+                />
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-sm border-border/80 bg-transparent shadow-none"
+                onClick={() => setImportOpen(true)}
+              >
+                <BookOpen className="mr-2 size-3.5" />
+                Import a chapter
+              </Button>
+            </div>
+
+            {translations && translations.length === 0 ? (
+              <div className="mt-10 flex flex-col items-center gap-3 border-y border-border/70 py-16 text-center">
+                <p className="text-sm font-medium">Your catalog is empty</p>
+                <p className="max-w-sm text-xs leading-5 text-muted-foreground">
+                  Every chapter you translate is filed here automatically. You can also
+                  import chapters you have already translated elsewhere.
+                </p>
+                <div className="mt-2 flex flex-wrap justify-center gap-3">
+                  <Button
+                    type="button"
+                    className="rounded-sm px-5 shadow-none hover:bg-foreground/90"
+                    onClick={() => setTab("translate")}
+                  >
+                    Translate a chapter
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="rounded-sm border-border/80 bg-transparent shadow-none"
+                    onClick={() => setImportOpen(true)}
+                  >
+                    Import a chapter
+                  </Button>
+                </div>
+              </div>
+            ) : translations && filtered.length === 0 ? (
+              <div className="mt-10 flex flex-col items-center gap-2 border-y border-border/70 py-16 text-center">
+                <p className="text-sm font-medium">No chapters match</p>
+                <p className="text-xs text-muted-foreground">
+                  Nothing in your catalog matches “{query}”.
+                </p>
+              </div>
+            ) : (
+              <ul className="mt-6 divide-y divide-border/70 border-y border-border/70">
+                {filtered.map((t) => (
+                  <li key={t._id}>
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      className={cn(
+                        "group grid cursor-pointer grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1 px-2 py-3 transition-colors hover:bg-muted/50",
+                        activeId === t._id && "bg-muted/60",
+                      )}
+                      onClick={() => void handleOpenInTranslator(t._id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          void handleOpenInTranslator(t._id);
+                        }
+                      }}
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">
+                          {t.title ?? t.fileName}
+                        </p>
+                        <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                          {[t.novelName, t.fileName, formatDate(t.createdAt)]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={cn(
+                            "hidden text-[10px] font-medium tracking-[0.18em] uppercase sm:inline",
+                            t.status === "done" && "text-foreground",
+                            t.status === "translating" && "text-muted-foreground",
+                            t.status === "error" && "text-destructive",
+                            t.status === "draft" && "text-muted-foreground",
+                          )}
+                        >
+                          {t.status === "done"
+                            ? modelLabel(t.model)
+                            : `${t.completedSegments}/${t.segmentCount}`}
+                        </span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="size-7 rounded-sm text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                          aria-label="Remove chapter"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handleDelete(t._id);
+                          }}
+                        >
+                          {confirmDeleteId === t._id ? (
+                            <span className="text-[10px] font-medium">Sure?</span>
+                          ) : (
+                            <Trash2 className="size-3.5" />
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* Import dialog */}
+      <Dialog open={importOpen} onOpenChange={setImportOpen}>
+        <DialogContent className="rounded-sm sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Import a chapter</DialogTitle>
+            <DialogDescription>
+              Add a chapter you have already translated elsewhere — no translation run
+              needed. It is filed straight into your catalog.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="import-title" className="text-xs">
+                  Title
+                </Label>
+                <Input
+                  id="import-title"
+                  value={importTitle}
+                  onChange={(e) => setImportTitle(e.target.value)}
+                  placeholder="Chapter 12 – The Quiet Storm"
+                  className="rounded-sm border-border/80 text-sm shadow-none"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="import-novel" className="text-xs">
+                  Novel / series <span className="text-muted-foreground">(optional)</span>
+                </Label>
+                <Input
+                  id="import-novel"
+                  value={importNovel}
+                  onChange={(e) => setImportNovel(e.target.value)}
+                  placeholder="A Record of a Mortal's Journey"
+                  className="rounded-sm border-border/80 text-sm shadow-none"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="import-text" className="text-xs">
+                Translated text
+              </Label>
+              <Textarea
+                id="import-text"
+                value={importText}
+                onChange={(e) => setImportText(e.target.value)}
+                placeholder="Paste the translated chapter here…"
+                className="min-h-44 rounded-sm border-border/80 text-sm leading-6 shadow-none"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="import-source" className="text-xs">
+                Original text <span className="text-muted-foreground">(optional)</span>
+              </Label>
+              <Textarea
+                id="import-source"
+                value={importSource}
+                onChange={(e) => setImportSource(e.target.value)}
+                placeholder="Paste the source chapter here if you want to keep it…"
+                className="min-h-24 rounded-sm border-border/80 text-sm leading-6 shadow-none"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              className="rounded-sm text-muted-foreground hover:text-foreground"
+              onClick={() => setImportOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="rounded-sm px-5 shadow-none hover:bg-foreground/90"
+              disabled={!importTitle.trim() || !importText.trim()}
+              onClick={handleImport}
+            >
+              Add to catalog
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }

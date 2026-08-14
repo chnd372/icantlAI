@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, BookOpen, Search } from "lucide-react";
 import { Link } from "react-router";
 
 import { Button } from "@/components/ui/button";
@@ -41,8 +41,8 @@ const STEPS = [
   },
   {
     number: "03",
-    title: "Export",
-    body: "Copy the finished chapter or download it as clean text, ready for your site.",
+    title: "File it away",
+    body: "Every finished chapter lands in your catalog automatically — searchable by title, series, or content, whenever you need it back.",
   },
 ];
 
@@ -53,9 +53,11 @@ export default function Landing() {
       <header className="border-b border-border/70">
         <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-6">
           <Link to="/" className="flex items-baseline gap-2">
-            <span className="font-display text-lg tracking-tight">Laras</span>
+            <span className="font-display text-lg tracking-tight">
+              Novel Translator App
+            </span>
             <span className="hidden text-xs text-muted-foreground sm:inline">
-              web novel translation studio
+              your personal translation studio
             </span>
           </Link>
           <Button
@@ -75,7 +77,7 @@ export default function Landing() {
           {...fadeUp}
           className="text-[11px] font-medium tracking-[0.28em] text-muted-foreground uppercase"
         >
-          For solo web novel translators
+          Built for your own translation workflow
         </motion.p>
 
         <motion.h1
@@ -83,7 +85,7 @@ export default function Landing() {
           transition={{ duration: 0.6, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
           className="font-display mt-6 max-w-2xl text-5xl leading-[1.05] tracking-tight text-balance sm:text-6xl"
         >
-          Chapters, translated with intent.
+          Chapters, translated and kept.
         </motion.h1>
 
         <motion.p
@@ -91,9 +93,9 @@ export default function Landing() {
           transition={{ duration: 0.6, delay: 0.16, ease: [0.22, 1, 0.36, 1] }}
           className="mt-6 max-w-xl text-base leading-7 text-muted-foreground sm:text-lg"
         >
-          Laras turns uploaded chapters of wuxia, xianxia, murim, and fantasy
-          fiction into natural, fluent Indonesian — while every name, title,
-          and technique stays exactly as written.
+          Novel Translator App turns uploaded chapters of wuxia, xianxia, murim, and
+          fantasy fiction into natural, fluent Indonesian — then files every finished
+          chapter into a catalog you can browse and search whenever you need it.
         </motion.p>
 
         <motion.div
@@ -196,6 +198,64 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* Your catalog */}
+      <section className="mx-auto w-full max-w-5xl px-6 py-20">
+        <motion.div
+          {...fadeUp}
+          viewport={{ once: true, margin: "-80px" }}
+          whileInView={{ opacity: 1, y: 0 }}
+          className="border-t border-border/70 pt-12"
+        >
+          <p className="text-[11px] font-medium tracking-[0.28em] text-muted-foreground uppercase">
+            Your catalog
+          </p>
+          <h2 className="font-display mt-4 max-w-xl text-3xl tracking-tight text-balance sm:text-4xl">
+            Every chapter, one search away.
+          </h2>
+          <p className="mt-5 max-w-xl text-sm leading-6 text-muted-foreground">
+            Finished chapters are filed automatically — no bookkeeping on your
+            side. Browse the list, search by title, series, or content, and jump
+            straight back into any chapter to copy, download, or re-translate it.
+            Chapters you have already translated elsewhere can be imported the
+            same way.
+          </p>
+        </motion.div>
+
+        <div className="mt-12 grid gap-0 sm:grid-cols-2">
+          <motion.div
+            {...fadeUp}
+            viewport={{ once: true, margin: "-60px" }}
+            whileInView={{ opacity: 1, y: 0 }}
+            className="border-t border-border/70 py-6 sm:border-r sm:px-8 sm:first:pl-0 sm:last:border-r-0 sm:last:pr-0"
+          >
+            <Search className="size-4 text-muted-foreground" />
+            <h3 className="mt-4 text-sm font-medium tracking-wide">Search</h3>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              One field scans titles, series names, and the text itself — find
+              the chapter you need without digging through folders.
+            </p>
+          </motion.div>
+          <motion.div
+            {...fadeUp}
+            viewport={{ once: true, margin: "-60px" }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{
+              duration: 0.5,
+              delay: 0.08,
+              ease: [0.22, 1, 0.36, 1],
+            }}
+            className="border-t border-border/70 py-6 sm:px-8 sm:last:pr-0"
+          >
+            <BookOpen className="size-4 text-muted-foreground" />
+            <h3 className="mt-4 text-sm font-medium tracking-wide">Yours alone</h3>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              The catalog is private to your account. Translate, import, and
+              archive at your own pace — nothing is shared unless you choose to.
+            </p>
+          </motion.div>
+        </div>
+      </section>
+
       {/* How it works */}
       <section className="mx-auto w-full max-w-5xl px-6 py-20">
         <motion.div
@@ -208,7 +268,7 @@ export default function Landing() {
             How it works
           </p>
           <h2 className="font-display mt-4 max-w-xl text-3xl tracking-tight text-balance sm:text-4xl">
-            From upload to release, in three steps.
+            From upload to archive, in three steps.
           </h2>
         </motion.div>
 
@@ -249,11 +309,11 @@ export default function Landing() {
           className="border-t border-border/70 pt-16 text-center"
         >
           <h2 className="font-display mx-auto max-w-md text-3xl tracking-tight text-balance sm:text-4xl">
-            Ready for the next chapter?
+            Your next chapter is waiting.
           </h2>
           <p className="mx-auto mt-4 max-w-sm text-sm leading-6 text-muted-foreground">
-            Bring your own release queue. Laras handles the prose — you keep
-            the names, the tone, and the readers.
+            Translate at your own pace, keep everything in one place, and pick
+            up any chapter the moment inspiration strikes.
           </p>
           <Button
             asChild
@@ -271,10 +331,12 @@ export default function Landing() {
       <footer className="border-t border-border/70">
         <div className="mx-auto flex max-w-5xl flex-col gap-2 px-6 py-8 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
           <span>
-            <span className="font-display text-sm text-foreground">Laras</span>{" "}
-            — translation studio for solo web novel translators
+            <span className="font-display text-sm text-foreground">
+              Novel Translator App
+            </span>{" "}
+            — your personal web novel translation studio
           </span>
-          <span>© 2026 Laras</span>
+          <span>© 2026 Novel Translator App</span>
         </div>
       </footer>
     </div>

@@ -38,6 +38,7 @@ const schema = defineSchema(
       userId: v.id("users"),
       fileName: v.string(), // original uploaded file name
       title: v.optional(v.string()), // first meaningful line (usually the chapter title)
+      novelName: v.optional(v.string()), // series or novel this chapter belongs to
       sourceText: v.string(),
       model: v.string(),
       status: v.union(

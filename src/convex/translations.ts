@@ -18,12 +18,14 @@ export const listTranslations = query({
       .query("translations")
       .withIndex("by_user", (q) => q.eq("userId", userId))
       .order("desc")
-      .take(30);
+      .take(200);
 
     return translations.map((t) => ({
       _id: t._id,
       fileName: t.fileName,
       title: t.title ?? null,
+      novelName: t.novelName ?? null,
+      sourcePreview: t.sourceText.slice(0, 220),
       model: t.model,
       status: t.status,
       error: t.error ?? null,
@@ -56,6 +58,7 @@ export const getTranslation = query({
         _id: translation._id,
         fileName: translation.fileName,
         title: translation.title ?? null,
+        novelName: translation.novelName ?? null,
         sourceText: translation.sourceText,
         model: translation.model,
         status: translation.status,
@@ -85,6 +88,7 @@ export const createTranslation = mutation({
   args: {
     fileName: v.string(),
     title: v.optional(v.string()),
+    novelName: v.optional(v.string()),
     sourceText: v.string(),
     model: v.string(),
     segments: v.array(
@@ -104,6 +108,7 @@ export const createTranslation = mutation({
       userId,
       fileName: args.fileName,
       title: args.title,
+      novelName: args.novelName,
       sourceText: args.sourceText,
       model: args.model,
       status: "draft",
@@ -164,6 +169,51 @@ export const recordSegmentResult = mutation({
       error: args.status === "error" ? (args.error ?? "Segment failed") : undefined,
       updatedAt: Date.now(),
     });
+  },
+});
+
+/**
+ * Add a chapter straight to the catalog without running the translator — for
+ * back-catalog work or chapters translated outside this app.
+ */
+export const importChapter = mutation({
+  args: {
+    fileName: v.string(),
+    title: v.optional(v.string()),
+    novelName: v.optional(v.string()),
+    sourceText: v.optional(v.string()),
+    translatedText: v.string(),
+    model: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) throw new Error("Not signed in");
+    if (!args.translatedText.trim()) throw new Error("Nothing to add");
+
+    const now = Date.now();
+    const translationId = await ctx.db.insert("translations", {
+      userId,
+      fileName: args.fileName,
+      title: args.title,
+      novelName: args.novelName,
+      sourceText: args.sourceText ?? "",
+      model: args.model,
+      status: "done",
+      segmentCount: 1,
+      completedSegments: 1,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await ctx.db.insert("translationSegments", {
+      translationId,
+      index: 0,
+      sourceText: args.sourceText ?? "",
+      translatedText: args.translatedText,
+      status: "done",
+    });
+
+    return translationId;
   },
 });
 
