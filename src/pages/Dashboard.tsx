@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { useAction, useConvex, useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
@@ -9,13 +9,16 @@ import {
   Copy,
   Download,
   FileText,
+  Files,
   Loader2,
   LogOut,
+  PenLine,
   RefreshCw,
   Search,
   Settings2,
   Trash2,
   Upload,
+  X,
 } from "lucide-react";
 
 import { ProvidersDialog } from "@/components/ProvidersDialog";
@@ -48,6 +51,16 @@ import { cn } from "@/lib/utils";
 
 type SourceLang = "english" | "chinese";
 type TargetLang = "indonesian" | "english";
+
+interface QueueItem {
+  key: string;
+  fileName: string;
+  sourceText: string;
+  wordCount: number;
+  translationId?: Id<"translations">;
+  status: "waiting" | "translating" | "done" | "error";
+  error?: string;
+}
 
 const MODELS = [
   { id: "gpt-4o-mini", label: "Fast", detail: "gpt-4o-mini" },
@@ -106,6 +119,18 @@ export default function Dashboard() {
   const [copied, setCopied] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<Id<"translations"> | null>(null);
 
+  // Translation instructions (custom prompt), saved to the account
+  const [customPrompt, setCustomPrompt] = useState("");
+  const [promptSaved, setPromptSaved] = useState(false);
+  const [savingPrompt, setSavingPrompt] = useState(false);
+  const promptSynced = useRef(false);
+
+  // Batch queue
+  const [queue, setQueue] = useState<QueueItem[]>([]);
+  const queueKeyRef = useRef(0);
+  const processingRef = useRef(false);
+  const [processing, setProcessing] = useState(false);
+
   // Catalog search
   const [query, setQuery] = useState("");
   // Import dialog
@@ -121,6 +146,7 @@ export default function Dashboard() {
   const createTranslation = useMutation(api.translations.createTranslation);
   const startTranslation = useMutation(api.translations.startTranslation);
   const importChapter = useMutation(api.translations.importChapter);
+  const saveCustomPrompt = useMutation(api.settings.saveCustomPrompt);
   const translateSegmentAction = useAction(api.translateSegment.translateSegment);
   const deleteTranslation = useMutation(api.translations.deleteTranslation);
 
@@ -130,6 +156,13 @@ export default function Dashboard() {
     api.translations.getTranslation,
     activeId ? { translationId: activeId } : "skip",
   );
+
+  useEffect(() => {
+    if (!promptSynced.current && user) {
+      setCustomPrompt(user.customPrompt ?? "");
+      promptSynced.current = true;
+    }
+  }, [user]);
 
   const isCustom = providerChoice.startsWith("custom:");
   const selectedProviderId = isCustom
@@ -175,26 +208,52 @@ export default function Dashboard() {
     navigate("/");
   };
 
-  const handleFile = useCallback(async (file: File) => {
-    if (file.size > MAX_FILE_SIZE) {
-      toast.error("File is too large — keep chapters under 250 KB.");
-      return;
-    }
-    try {
-      const text = await file.text();
-      if (!text.trim()) {
-        toast.error("That file is empty.");
-        return;
+  const handleFiles = useCallback(async (fileList: FileList | File[]) => {
+    const files = Array.from(fileList);
+    const accepted: { file: File; text: string }[] = [];
+
+    for (const file of files) {
+      if (file.size > MAX_FILE_SIZE) {
+        toast.error(`${file.name} is too large — keep chapters under 250 KB.`);
+        continue;
       }
+      try {
+        const text = await file.text();
+        if (text.trim()) {
+          accepted.push({ file, text });
+        } else {
+          toast.error(`${file.name} is empty.`);
+        }
+      } catch {
+        toast.error(`Could not read ${file.name}.`);
+      }
+    }
+
+    if (accepted.length === 0) return;
+
+    // A single file keeps the current one-chapter flow.
+    if (accepted.length === 1) {
+      const { file, text } = accepted[0];
       setLocalSource(text);
       setLocalFileName(file.name);
       setActiveId(null);
       setConfirmDeleteId(null);
-    } catch {
-      toast.error("Could not read that file. Try a .txt or .md export.");
+      return;
     }
+
+    // Multiple files go into the batch queue.
+    const items: QueueItem[] = accepted.map(({ file, text }) => ({
+      key: `q-${++queueKeyRef.current}`,
+      fileName: file.name,
+      sourceText: text,
+      wordCount: countWords(text),
+      status: "waiting",
+    }));
+    setQueue((q) => [...q, ...items]);
+    toast.success(`${items.length} chapters added to the queue.`);
   }, []);
 
+  /** Translate every segment of one chapter. Returns false on failure. */
   const runSegments = useCallback(
     async (
       items: { segmentId: Id<"translationSegments">; sourceText: string }[],
@@ -204,8 +263,8 @@ export default function Dashboard() {
         providerId?: Id<"aiProviders">;
         model: string;
       },
-    ) => {
-      if (runningRef.current) return;
+    ): Promise<boolean> => {
+      if (runningRef.current) return false;
       runningRef.current = true;
       setRunning(true);
       try {
@@ -219,13 +278,14 @@ export default function Dashboard() {
             model: options.model,
           });
         }
-        toast.success("Chapter translated and filed in your catalog.");
+        return true;
       } catch (error) {
         toast.error(
           error instanceof Error
             ? `Translation interrupted: ${error.message}`
             : "Translation interrupted. You can resume from where it stopped.",
         );
+        return false;
       } finally {
         runningRef.current = false;
         setRunning(false);
@@ -239,7 +299,7 @@ export default function Dashboard() {
       toast.error("Upload a chapter first.");
       return;
     }
-    if (runningRef.current) return;
+    if (runningRef.current || processingRef.current) return;
 
     const segments = splitChapter(displaySource);
     if (segments.length === 0) {
@@ -282,7 +342,8 @@ export default function Dashboard() {
           segmentId: s._id,
           sourceText: s.sourceText,
         })) ?? [];
-      await runSegments(items, options);
+      const ok = await runSegments(items, options);
+      if (ok) toast.success("Chapter translated and filed in your catalog.");
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Could not start the translation.",
@@ -291,7 +352,7 @@ export default function Dashboard() {
   };
 
   const handleResume = async () => {
-    if (!active || runningRef.current) return;
+    if (!active || runningRef.current || processingRef.current) return;
     const pending = active.segments.filter(
       (s) => s.status === "pending" || s.status === "error",
     );
@@ -308,8 +369,171 @@ export default function Dashboard() {
     );
   };
 
+  /** Create (or resume) one queued chapter and translate its segments. */
+  const translateQueueItem = useCallback(
+    async (item: QueueItem): Promise<boolean> => {
+      const segments = splitChapter(item.sourceText);
+      if (segments.length === 0) return false;
+
+      const chosenProvider = providers?.find((p) => p._id === selectedProviderId);
+      if (isCustom && !chosenProvider) {
+        toast.error("That provider no longer exists — pick another one.");
+        return false;
+      }
+      const options = {
+        sourceLang,
+        targetLang,
+        providerId: isCustom ? selectedProviderId : undefined,
+        model: isCustom ? (chosenProvider?.modelId ?? "custom") : selectedVlyModel,
+      };
+
+      try {
+        let id = item.translationId;
+        if (!id) {
+          id = await createTranslation({
+            fileName: item.fileName,
+            title: extractTitle(item.sourceText) ?? undefined,
+            novelName: novelName.trim() || undefined,
+            sourceText: item.sourceText,
+            model: options.model,
+            providerId: options.providerId,
+            sourceLang: options.sourceLang,
+            targetLang: options.targetLang,
+            segments: segments.map((s) => ({
+              index: s.index,
+              sourceText: s.sourceText,
+            })),
+          });
+          setQueue((q) =>
+            q.map((i) => (i.key === item.key ? { ...i, translationId: id } : i)),
+          );
+          await startTranslation({ translationId: id });
+        }
+
+        const full = await convex.query(api.translations.getTranslation, {
+          translationId: id,
+        });
+        const pending =
+          full?.segments.filter(
+            (s) => s.status === "pending" || s.status === "error",
+          ) ?? [];
+        return await runSegments(
+          pending.map((s) => ({ segmentId: s._id, sourceText: s.sourceText })),
+          options,
+        );
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Could not translate this chapter.",
+        );
+        return false;
+      }
+    },
+    [
+      convex,
+      createTranslation,
+      startTranslation,
+      runSegments,
+      providers,
+      isCustom,
+      selectedProviderId,
+      selectedVlyModel,
+      sourceLang,
+      targetLang,
+      novelName,
+    ],
+  );
+
+  const handleTranslateAll = async () => {
+    if (processingRef.current || runningRef.current) return;
+    const targets = queue.filter(
+      (i) => i.status === "waiting" || i.status === "error",
+    );
+    if (targets.length === 0) return;
+
+    processingRef.current = true;
+    setProcessing(true);
+    let doneCount = 0;
+    let failed = false;
+    try {
+      for (const item of targets) {
+        setQueue((q) =>
+          q.map((i) =>
+            i.key === item.key ? { ...i, status: "translating", error: undefined } : i,
+          ),
+        );
+        const ok = await translateQueueItem(item);
+        setQueue((q) =>
+          q.map((i) => (i.key === item.key ? { ...i, status: ok ? "done" : "error" } : i)),
+        );
+        if (ok) {
+          doneCount += 1;
+        } else {
+          failed = true;
+          break;
+        }
+      }
+    } finally {
+      processingRef.current = false;
+      setProcessing(false);
+    }
+
+    if (failed) {
+      toast.error("Batch stopped on a failed chapter — fix it and translate again.");
+    } else if (doneCount > 0) {
+      toast.success(
+        `${doneCount} chapter${doneCount === 1 ? "" : "s"} translated and filed in your catalog.`,
+      );
+    }
+  };
+
+  const handleTranslateItem = async (item: QueueItem) => {
+    if (processingRef.current || runningRef.current || item.status === "done") return;
+    processingRef.current = true;
+    setProcessing(true);
+    setQueue((q) =>
+      q.map((i) =>
+        i.key === item.key ? { ...i, status: "translating", error: undefined } : i,
+      ),
+    );
+    const ok = await translateQueueItem(item);
+    setQueue((q) =>
+      q.map((i) => (i.key === item.key ? { ...i, status: ok ? "done" : "error" } : i)),
+    );
+    processingRef.current = false;
+    setProcessing(false);
+    if (ok) toast.success(`${item.fileName} translated and filed in your catalog.`);
+  };
+
+  const handleRemoveQueueItem = (key: string) => {
+    if (processingRef.current) return;
+    setQueue((q) => q.filter((i) => i.key !== key));
+  };
+
+  const handleClearQueue = () => {
+    if (processingRef.current) return;
+    setQueue((q) =>
+      q.filter((i) => i.status === "waiting" || i.status === "translating"),
+    );
+  };
+
+  const handleSavePrompt = async () => {
+    if (savingPrompt) return;
+    setSavingPrompt(true);
+    try {
+      await saveCustomPrompt({ customPrompt });
+      setPromptSaved(true);
+      toast.success("Translation instructions saved — they apply to new runs.");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Could not save the instructions.",
+      );
+    } finally {
+      setSavingPrompt(false);
+    }
+  };
+
   const handleOpenInTranslator = async (id: Id<"translations">) => {
-    if (runningRef.current) return;
+    if (runningRef.current || processingRef.current) return;
     try {
       const full = await convex.query(api.translations.getTranslation, {
         translationId: id,
@@ -394,10 +618,14 @@ export default function Dashboard() {
   };
 
   const status = active?.translation.status ?? "idle";
-  const canTranslate = !!displaySource && !running;
+  const canTranslate = !!displaySource && !running && !processing;
   const hasPending = active
     ? active.segments.some((s) => s.status === "pending" || s.status === "error")
     : false;
+  const queueBusy = processing || running;
+  const hasQueueWork = queue.some(
+    (i) => i.status === "waiting" || i.status === "error",
+  );
 
   return (
     <main className="min-h-screen bg-background text-foreground">
@@ -548,7 +776,7 @@ export default function Dashboard() {
                         variant="ghost"
                         size="sm"
                         className="h-7 rounded-sm px-2 text-xs text-muted-foreground hover:text-foreground"
-                        disabled={running}
+                        disabled={queueBusy}
                         onClick={() => {
                           setLocalSource(null);
                           setLocalFileName(null);
@@ -575,18 +803,17 @@ export default function Dashboard() {
                     onDrop={(e) => {
                       e.preventDefault();
                       setDragOver(false);
-                      const file = e.dataTransfer.files?.[0];
-                      if (file) void handleFile(file);
+                      if (!queueBusy) void handleFiles(e.dataTransfer.files);
                     }}
                   >
                     <input
                       type="file"
                       accept=".txt,.md,.text,text/plain,text/markdown"
+                      multiple
                       className="hidden"
-                      disabled={running}
+                      disabled={queueBusy}
                       onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) void handleFile(file);
+                        if (e.target.files) void handleFiles(e.target.files);
                         e.target.value = "";
                       }}
                     />
@@ -594,9 +821,10 @@ export default function Dashboard() {
                       <FileText className="size-4 text-muted-foreground" />
                     </div>
                     <div>
-                      <p className="text-sm font-medium">Drop a chapter file here</p>
+                      <p className="text-sm font-medium">Drop chapter files here</p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        or click to browse · .txt or .md · under 250 KB
+                        or click to browse · one chapter, or several at once · .txt or
+                        .md · under 250 KB each
                       </p>
                     </div>
                   </label>
@@ -738,7 +966,7 @@ export default function Dashboard() {
                   onChange={(e) => setNovelName(e.target.value)}
                   placeholder="Novel / series (optional)"
                   className="w-full max-w-52 rounded-sm border-border/80 bg-card text-sm shadow-none"
-                  disabled={running}
+                  disabled={queueBusy}
                 />
               </div>
 
@@ -802,7 +1030,7 @@ export default function Dashboard() {
                   </>
                 )}
               </Button>
-              {hasPending && !running && (
+              {hasPending && !queueBusy && (
                 <Button
                   type="button"
                   variant="outline"
@@ -813,7 +1041,7 @@ export default function Dashboard() {
                   Resume
                 </Button>
               )}
-              {!running && active && status === "done" && (
+              {!queueBusy && active && status === "done" && (
                 <p className="text-xs text-muted-foreground">
                   Filed under{" "}
                   <span className="font-medium text-foreground">
@@ -823,6 +1051,167 @@ export default function Dashboard() {
                 </p>
               )}
             </div>
+
+            {/* Translation instructions */}
+            <section className="mt-12 border-t border-border/70 pt-6">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <PenLine className="size-4 text-muted-foreground" />
+                  <h2 className="text-[11px] font-medium tracking-[0.24em] text-muted-foreground uppercase">
+                    Translation instructions
+                  </h2>
+                </div>
+                {promptSaved && (
+                  <span className="text-[11px] text-muted-foreground">
+                    Saved — applies to new runs
+                  </span>
+                )}
+              </div>
+              <p className="mt-2 max-w-2xl text-xs leading-5 text-muted-foreground">
+                Extra guidance for the model on every new translation run — style
+                notes, glossary terms, names to keep or change. Where these
+                conflict with the general rules, your instructions win.
+              </p>
+              <div className="mt-3 flex flex-col items-start gap-3">
+                <Textarea
+                  value={customPrompt}
+                  onChange={(e) => {
+                    setCustomPrompt(e.target.value);
+                    setPromptSaved(false);
+                  }}
+                  placeholder="e.g., Keep the term “Qi” as-is, translate “Young Miss” as “Nona Muda”, keep battle scenes terse and dialogue casual."
+                  className="max-w-2xl min-h-24 rounded-sm border-border/80 text-sm leading-6 shadow-none"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="rounded-sm border-border/80 bg-transparent shadow-none"
+                  onClick={handleSavePrompt}
+                  disabled={savingPrompt}
+                >
+                  {savingPrompt && <Loader2 className="mr-2 size-3.5 animate-spin" />}
+                  Save instructions
+                </Button>
+              </div>
+            </section>
+
+            {/* Batch queue */}
+            <section className="mt-10 border-t border-border/70 pt-6">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <Files className="size-4 text-muted-foreground" />
+                  <h2 className="text-[11px] font-medium tracking-[0.24em] text-muted-foreground uppercase">
+                    Queue
+                  </h2>
+                  {queue.length > 0 && (
+                    <span className="rounded-sm bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                      {queue.length}
+                    </span>
+                  )}
+                </div>
+                {queue.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 rounded-sm px-3 text-xs text-muted-foreground hover:text-foreground"
+                      disabled={queueBusy}
+                      onClick={handleClearQueue}
+                    >
+                      Clear finished
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="h-8 rounded-sm px-4 shadow-none hover:bg-foreground/90"
+                      disabled={queueBusy || !hasQueueWork}
+                      onClick={handleTranslateAll}
+                    >
+                      {processing ? (
+                        <>
+                          <Loader2 className="mr-2 size-3.5 animate-spin" />
+                          Translating…
+                        </>
+                      ) : (
+                        <>
+                          Translate all
+                          <ArrowRight className="ml-2 size-3.5" />
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              {queue.length === 0 ? (
+                <p className="mt-4 border-y border-border/70 py-6 text-center text-xs text-muted-foreground">
+                  Drop several chapter files at once to queue them — then translate
+                  them all in sequence, or one by one.
+                </p>
+              ) : (
+                <ul className="mt-4 divide-y divide-border/70 border-y border-border/70">
+                  {queue.map((item) => (
+                    <li
+                      key={item.key}
+                      className="flex items-center justify-between gap-3 px-2 py-2.5"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">{item.fileName}</p>
+                        <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                          {item.wordCount.toLocaleString()} words
+                          {item.error ? ` · ${item.error}` : ""}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <span
+                          className={cn(
+                            "text-[10px] font-medium tracking-[0.18em] uppercase",
+                            item.status === "done" && "text-foreground",
+                            item.status === "translating" && "text-muted-foreground",
+                            item.status === "error" && "text-destructive",
+                            item.status === "waiting" && "text-muted-foreground",
+                          )}
+                        >
+                          {item.status === "translating" ? (
+                            <span className="inline-flex items-center gap-1.5">
+                              <Loader2 className="size-3 animate-spin" />
+                              Translating
+                            </span>
+                          ) : (
+                            item.status
+                          )}
+                        </span>
+                        {(item.status === "waiting" || item.status === "error") && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 rounded-sm px-2 text-xs"
+                            disabled={queueBusy}
+                            onClick={() => void handleTranslateItem(item)}
+                          >
+                            Translate
+                          </Button>
+                        )}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="size-7 rounded-sm text-muted-foreground hover:text-foreground"
+                          aria-label={`Remove ${item.fileName} from the queue`}
+                          disabled={queueBusy}
+                          onClick={() => handleRemoveQueueItem(item.key)}
+                        >
+                          <X className="size-3.5" />
+                        </Button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
           </div>
         ) : (
           /* Catalog */

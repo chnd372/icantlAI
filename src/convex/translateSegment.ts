@@ -130,7 +130,15 @@ export const translateSegment = action({
     const userId = await getAuthUserId(ctx);
     if (userId === null) throw new Error("Not signed in");
 
-    const system = buildTranslationPrompt(args.sourceLang, args.targetLang);
+    const customPrompt = await ctx.runQuery(
+      internal.settings.getCustomPromptForAction,
+      { userId },
+    );
+    const system = buildTranslationPrompt(
+      args.sourceLang,
+      args.targetLang,
+      customPrompt ?? undefined,
+    );
     const user = `Translate the following chapter segment into ${TARGET_LABEL[args.targetLang]}. Output only the translated text, nothing else.\n\n---\n${args.sourceText}`;
 
     try {

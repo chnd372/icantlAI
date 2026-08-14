@@ -32,12 +32,12 @@ const STEPS = [
   {
     number: "01",
     title: "Upload",
-    body: "Drop in a chapter file — .txt or .md — straight from your release queue.",
+    body: "Drop in one chapter file — or several at once — straight from your release queue. Multiple files land in a queue you can run all at once or one by one.",
   },
   {
     number: "02",
     title: "Translate",
-    body: "The chapter is split and translated against the standard, in the language pair you choose, segment by segment, with progress as it goes.",
+    body: "Each chapter is split and translated against the standard plus any instructions you've set, in the language pair you choose, segment by segment, with progress as it goes.",
   },
   {
     number: "03",

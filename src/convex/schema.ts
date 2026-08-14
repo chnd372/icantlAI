@@ -28,6 +28,7 @@ const schema = defineSchema(
       email: v.optional(v.string()), // email of the user. do not remove
       emailVerificationTime: v.optional(v.number()), // email verification time. do not remove
       isAnonymous: v.optional(v.boolean()), // is the user anonymous. do not remove
+      customPrompt: v.optional(v.string()), // translator's own instructions injected into every translation prompt
 
       role: v.optional(roleValidator), // role of the user. do not remove
     }).index("email", ["email"]), // index for the email. do not remove or modify

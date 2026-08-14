@@ -19,6 +19,7 @@ const TARGET_LABEL: Record<TargetLang, string> = {
 export function buildTranslationPrompt(
   sourceLang: SourceLang,
   targetLang: TargetLang,
+  customPrompt?: string,
 ): string {
   const source = SOURCE_LABEL[sourceLang];
   const target = TARGET_LABEL[targetLang];
@@ -32,6 +33,10 @@ export function buildTranslationPrompt(
     sourceLang === "chinese"
       ? "The source text is written in Chinese. Chinese names and terms may appear romanized (pinyin) — preserve those romanizations exactly as written. Translate the prose itself; never transliterate English text into Chinese."
       : "The source text is written in English. Names and terms appear in English — keep them exactly as written.";
+
+  const customSection = customPrompt
+    ? `\nADDITIONAL INSTRUCTIONS FROM THE TRANSLATOR\n${customPrompt}\nThese are the translator's own instructions for this translation. Follow them, and where they conflict with the general rules above, the translator's instructions take priority.`
+    : "";
 
   return `You are a Professional Web Novel Translator specializing in Wuxia, Xianxia, Murim, Martial Arts, cultivation, and fantasy fiction.
 
@@ -65,7 +70,7 @@ Do NOT translate, alter, or adapt the following categories. Keep them exactly as
 - Dialogue Tags: If the speaker in a conversation feels ambiguous or unclear due to translation shifting, you may seamlessly insert a light dialogue tag to assist the reader ${dialogueTags}. Do not overuse them.
 
 SOURCE LANGUAGE NOTE
-${sourceNote}
+${sourceNote}${customSection}
 
 OUTPUT CONSTRAINTS
 - Output ONLY the clean translated text of the chapter segment in ${target}.
