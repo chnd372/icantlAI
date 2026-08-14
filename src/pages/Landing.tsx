@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import { ArrowRight, BookOpen, Cpu, Languages, Search } from "lucide-react";
 import { Link } from "react-router";
 
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 
 const fadeUp = {
@@ -60,14 +61,17 @@ export default function Landing() {
               your personal translation studio
             </span>
           </Link>
-          <Button
-            asChild
-            variant="outline"
-            size="sm"
-            className="rounded-sm border-border/80 bg-transparent text-foreground hover:bg-muted"
-          >
-            <Link to="/auth?returnTo=/dashboard">Sign in</Link>
-          </Button>
+          <div className="flex items-center gap-2">
+            <ThemeToggle className="size-8" />
+            <Button
+              asChild
+              variant="outline"
+              size="sm"
+              className="rounded-sm border-border/80 bg-transparent text-foreground hover:bg-muted"
+            >
+              <Link to="/auth?returnTo=/dashboard">Sign in</Link>
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -306,9 +310,10 @@ export default function Landing() {
               Any direction you need
             </h3>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Read the raw chapter in English or Chinese, and ask for the
-              translation in Indonesian or English. The same standards apply in
-              every direction — names and techniques never get “adapted.”
+              Read the raw chapter in English, Chinese, Korean, or Japanese —
+              and ask for the translation in Indonesian, English, or any of
+              dozens of languages. The same standards apply in every direction —
+              names and techniques never get “adapted.”
             </p>
           </motion.div>
         </div>

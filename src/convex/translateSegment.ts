@@ -3,19 +3,11 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
 
+import { languageName } from "../lib/languages";
 import { vly } from "../lib/vly-integrations";
 import { api, internal } from "./_generated/api";
 import { action } from "./_generated/server";
-import {
-  buildTranslationPrompt,
-  type SourceLang,
-  type TargetLang,
-} from "./translationPrompt";
-
-const TARGET_LABEL: Record<TargetLang, string> = {
-  english: "English",
-  indonesian: "Indonesian",
-};
+import { buildTranslationPrompt } from "./translationPrompt";
 
 interface CallOptions {
   baseUrl: string;
@@ -121,8 +113,8 @@ export const translateSegment = action({
   args: {
     segmentId: v.id("translationSegments"),
     sourceText: v.string(),
-    sourceLang: v.union(v.literal("english"), v.literal("chinese")),
-    targetLang: v.union(v.literal("english"), v.literal("indonesian")),
+    sourceLang: v.string(),
+    targetLang: v.string(),
     providerId: v.optional(v.id("aiProviders")),
     model: v.optional(v.string()),
   },
@@ -139,7 +131,9 @@ export const translateSegment = action({
       args.targetLang,
       customPrompt ?? undefined,
     );
-    const user = `Translate the following chapter segment into ${TARGET_LABEL[args.targetLang]}. Output only the translated text, nothing else.\n\n---\n${args.sourceText}`;
+    const user = `Translate the following chapter segment into ${languageName(
+      args.targetLang,
+    )}. Output only the translated text, nothing else.\n\n---\n${args.sourceText}`;
 
     try {
       let translatedText: string;

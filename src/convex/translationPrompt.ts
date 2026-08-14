@@ -1,15 +1,4 @@
-export type SourceLang = "english" | "chinese";
-export type TargetLang = "english" | "indonesian";
-
-const SOURCE_LABEL: Record<SourceLang, string> = {
-  english: "English",
-  chinese: "Chinese",
-};
-
-const TARGET_LABEL: Record<TargetLang, string> = {
-  english: "English",
-  indonesian: "Indonesian",
-};
+import { languageName, resolveLangCode } from "../lib/languages";
 
 /**
  * Builds the translation standard enforced on every segment, adapted to the
@@ -17,22 +6,38 @@ const TARGET_LABEL: Record<TargetLang, string> = {
  * web novel prose that keeps the wuxia/xianxia terminology intact.
  */
 export function buildTranslationPrompt(
-  sourceLang: SourceLang,
-  targetLang: TargetLang,
+  sourceLang: string,
+  targetLang: string,
   customPrompt?: string,
 ): string {
-  const source = SOURCE_LABEL[sourceLang];
-  const target = TARGET_LABEL[targetLang];
-  const isIndonesian = targetLang === "indonesian";
+  const source = languageName(sourceLang);
+  const target = languageName(targetLang);
+  const targetCode = resolveLangCode(targetLang);
 
-  const dialogueTags = isIndonesian
-    ? "(e.g., kata Xu Qing, ujar tetua itu, balasnya, tanyanya, gumamnya)"
-    : "(e.g., said Xu Qing, the elder said, she replied, he asked, she murmured)";
+  const sourceNote = (() => {
+    switch (resolveLangCode(sourceLang)) {
+      case "zh":
+        return "The source text is written in Chinese. Chinese names and terms may appear in Chinese characters or romanized (pinyin) — preserve romanizations exactly as written. Translate the prose itself; never transliterate English text into Chinese.";
+      case "ko":
+        return "The source text is written in Korean. Korean names and terms may appear in Hangul or romanized — preserve romanizations exactly as written. Translate the prose itself.";
+      case "ja":
+        return "The source text is written in Japanese. Japanese names and terms may appear in kanji or romanized — preserve romanizations exactly as written. Translate the prose itself.";
+      default:
+        return `The source text is written in ${source}. Names and terms appear in ${source} — keep them exactly as written.`;
+    }
+  })();
 
-  const sourceNote =
-    sourceLang === "chinese"
-      ? "The source text is written in Chinese. Chinese names and terms may appear romanized (pinyin) — preserve those romanizations exactly as written. Translate the prose itself; never transliterate English text into Chinese."
-      : "The source text is written in English. Names and terms appear in English — keep them exactly as written.";
+  const dialogueTags =
+    targetCode === "id"
+      ? "(e.g., kata Xu Qing, ujar tetua itu, balasnya, tanyanya, gumamnya)"
+      : targetCode === "en"
+        ? "(e.g., said Xu Qing, the elder said, she replied, he asked, she murmured)"
+        : "(e.g., said Xu Qing, the elder replied, she asked — using the target language's natural phrasing)";
+
+  const pronouns =
+    targetCode === "id"
+      ? 'pronouns like "ia", "dia", or character names'
+      : "pronouns or character names";
 
   const customSection = customPrompt
     ? `\nADDITIONAL INSTRUCTIONS FROM THE TRANSLATOR\n${customPrompt}\nThese are the translator's own instructions for this translation. Follow them, and where they conflict with the general rules above, the translator's instructions take priority.`
@@ -62,7 +67,7 @@ Do NOT translate, alter, or adapt the following categories. Keep them exactly as
 - Natural Prose: Translate ordinary narration, descriptions, actions, and emotions into smooth, flowing ${target}. Avoid stiff, literal, or robotic word-for-word machine translation.
 - Sentence Splitting: Break down overly long sentences into multiple shorter, natural ${target} sentences to ensure clarity and maintain the dynamic reading rhythm.
 - Tone & Atmosphere Consistency: Maintain the exact emotional tone of the source (tension, humor, sadness, anger, dignity, or grandeur). Do not make serious scenes sound casual, and vice versa.
-- Avoid Redundancy: Avoid awkward repetitions of pronouns like "ia", "dia", or character names when unnecessary in ${target} grammar.
+- Avoid Redundancy: Avoid awkward repetitions of ${pronouns} when unnecessary in ${target} grammar.
 
 3. PARAGRAPH & DIALOGUE STRUCTURE
 - Paragraph Breakdown: Prioritize readability over preserving the original paragraph blocks. Avoid "walls of text". Ideally, maintain 1-3 sentences per paragraph. Start a new paragraph whenever the action changes, focus shifts, or emotional beats transition.

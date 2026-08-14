@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 
 import { ProvidersDialog } from "@/components/ProvidersDialog";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -47,10 +48,13 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useAuth } from "@/hooks/use-auth";
 import { countWords, extractTitle, splitChapter } from "@/lib/chapter-split";
+import {
+  OUTPUT_LANGUAGES,
+  SOURCE_LANGUAGES,
+  languageName,
+  resolveLangCode,
+} from "@/lib/languages";
 import { cn } from "@/lib/utils";
-
-type SourceLang = "english" | "chinese";
-type TargetLang = "indonesian" | "english";
 
 interface QueueItem {
   key: string;
@@ -70,16 +74,10 @@ const MODELS = [
 
 const MAX_FILE_SIZE = 250_000; // characters
 
-const LANG_LABEL: Record<string, string> = {
-  english: "EN",
-  chinese: "ZH",
-  indonesian: "ID",
-};
-
 function langPair(sourceLang: string, targetLang: string) {
-  return `${LANG_LABEL[sourceLang] ?? sourceLang} → ${
-    LANG_LABEL[targetLang] ?? targetLang
-  }`;
+  return `${resolveLangCode(sourceLang).toUpperCase()} → ${resolveLangCode(
+    targetLang,
+  ).toUpperCase()}`;
 }
 
 function formatDate(timestamp: number) {
@@ -108,8 +106,8 @@ export default function Dashboard() {
 
   const [tab, setTab] = useState<Tab>("translate");
   const [providerChoice, setProviderChoice] = useState("vly:gpt-4o-mini");
-  const [sourceLang, setSourceLang] = useState<SourceLang>("english");
-  const [targetLang, setTargetLang] = useState<TargetLang>("indonesian");
+  const [sourceLang, setSourceLang] = useState("en");
+  const [targetLang, setTargetLang] = useState("id");
   const [providersOpen, setProvidersOpen] = useState(false);
   const [novelName, setNovelName] = useState("");
   const [localSource, setLocalSource] = useState<string | null>(null);
@@ -273,8 +271,8 @@ export default function Dashboard() {
     async (
       items: { segmentId: Id<"translationSegments">; sourceText: string }[],
       options: {
-        sourceLang: SourceLang;
-        targetLang: TargetLang;
+        sourceLang: string;
+        targetLang: string;
         providerId?: Id<"aiProviders">;
         model: string;
       },
@@ -376,8 +374,8 @@ export default function Dashboard() {
     await runSegments(
       pending.map((s) => ({ segmentId: s._id, sourceText: s.sourceText })),
       {
-        sourceLang: active.translation.sourceLang as SourceLang,
-        targetLang: active.translation.targetLang as TargetLang,
+        sourceLang: active.translation.sourceLang,
+        targetLang: active.translation.targetLang,
         providerId: active.translation.providerId ?? undefined,
         model: active.translation.model,
       },
@@ -604,7 +602,7 @@ export default function Dashboard() {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `${name} - ${LANG_LABEL[targetLang] ?? "txt"}.txt`;
+    anchor.download = `${name} - ${resolveLangCode(targetLang).toUpperCase()}.txt`;
     anchor.click();
     URL.revokeObjectURL(url);
   };
@@ -626,8 +624,8 @@ export default function Dashboard() {
         sourceText: importSource.trim() || undefined,
         translatedText: text,
         model: "imported",
-        sourceLang: "english",
-        targetLang: "indonesian",
+        sourceLang: "en",
+        targetLang: "id",
       });
       setImportOpen(false);
       setImportTitle("");
@@ -705,6 +703,8 @@ export default function Dashboard() {
             >
               <Settings2 className="size-4" />
             </Button>
+
+            <ThemeToggle />
 
             {user?.name && (
               <span className="hidden text-xs text-muted-foreground lg:inline">
@@ -942,9 +942,9 @@ export default function Dashboard() {
                         <span className="text-[11px] text-muted-foreground">
                           {status === "done"
                             ? "Saved to catalog — copy or download it there."
-                            : `${countWords(translatedText).toLocaleString()} words · ${
-                                LANG_LABEL[active.translation.targetLang]
-                              }`}
+                            : `${countWords(translatedText).toLocaleString()} words · ${languageName(
+                                active.translation.targetLang,
+                              )}`}
                         </span>
                       </div>
                     </div>
@@ -974,17 +974,20 @@ export default function Dashboard() {
                 </span>
                 <Select
                   value={sourceLang}
-                  onValueChange={(value) => setSourceLang(value as SourceLang)}
+                  onValueChange={setSourceLang}
                 >
                   <SelectTrigger
                     size="sm"
-                    className="w-32 rounded-sm border-border/80 bg-card text-xs shadow-none"
+                    className="w-36 rounded-sm border-border/80 bg-card text-xs shadow-none"
                   >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="rounded-sm">
-                    <SelectItem value="english">English</SelectItem>
-                    <SelectItem value="chinese">Chinese</SelectItem>
+                    {SOURCE_LANGUAGES.map((l) => (
+                      <SelectItem key={l.code} value={l.code}>
+                        {l.name}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -995,17 +998,20 @@ export default function Dashboard() {
                 </span>
                 <Select
                   value={targetLang}
-                  onValueChange={(value) => setTargetLang(value as TargetLang)}
+                  onValueChange={setTargetLang}
                 >
                   <SelectTrigger
                     size="sm"
-                    className="w-32 rounded-sm border-border/80 bg-card text-xs shadow-none"
+                    className="w-40 rounded-sm border-border/80 bg-card text-xs shadow-none"
                   >
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="rounded-sm">
-                    <SelectItem value="indonesian">Indonesian</SelectItem>
-                    <SelectItem value="english">English</SelectItem>
+                  <SelectContent className="max-h-72 rounded-sm">
+                    {OUTPUT_LANGUAGES.map((l) => (
+                      <SelectItem key={l.code} value={l.code}>
+                        {l.name}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

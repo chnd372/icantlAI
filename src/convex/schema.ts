@@ -43,8 +43,8 @@ const schema = defineSchema(
       sourceText: v.string(),
       model: v.string(),
       providerId: v.optional(v.id("aiProviders")), // custom AI provider used, if any
-      sourceLang: v.union(v.literal("english"), v.literal("chinese")),
-      targetLang: v.union(v.literal("english"), v.literal("indonesian")),
+      sourceLang: v.string(), // ISO code of the raw chapter's language
+      targetLang: v.string(), // ISO code of the delivered translation's language
       status: v.union(
         v.literal("draft"),
         v.literal("translating"),
