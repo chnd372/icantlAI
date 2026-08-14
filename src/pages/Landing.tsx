@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { ArrowRight, BookOpen, Search } from "lucide-react";
+import { ArrowRight, BookOpen, Cpu, Languages, Search } from "lucide-react";
 import { Link } from "react-router";
 
 import { Button } from "@/components/ui/button";
@@ -37,7 +37,7 @@ const STEPS = [
   {
     number: "02",
     title: "Translate",
-    body: "The chapter is split and translated against the standard, segment by segment, with progress as it goes.",
+    body: "The chapter is split and translated against the standard, in the language pair you choose, segment by segment, with progress as it goes.",
   },
   {
     number: "03",
@@ -251,6 +251,64 @@ export default function Landing() {
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
               The catalog is private to your account. Translate, import, and
               archive at your own pace — nothing is shared unless you choose to.
+            </p>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* Your models, your languages */}
+      <section className="mx-auto w-full max-w-5xl px-6 py-20">
+        <motion.div
+          {...fadeUp}
+          viewport={{ once: true, margin: "-80px" }}
+          whileInView={{ opacity: 1, y: 0 }}
+          className="border-t border-border/70 pt-12"
+        >
+          <p className="text-[11px] font-medium tracking-[0.28em] text-muted-foreground uppercase">
+            Your models, your languages
+          </p>
+          <h2 className="font-display mt-4 max-w-xl text-3xl tracking-tight text-balance sm:text-4xl">
+            Translate the way you already work.
+          </h2>
+        </motion.div>
+
+        <div className="mt-12 grid gap-0 sm:grid-cols-2">
+          <motion.div
+            {...fadeUp}
+            viewport={{ once: true, margin: "-60px" }}
+            whileInView={{ opacity: 1, y: 0 }}
+            className="border-t border-border/70 py-6 sm:border-r sm:px-8 sm:first:pl-0 sm:last:border-r-0 sm:last:pr-0"
+          >
+            <Cpu className="size-4 text-muted-foreground" />
+            <h3 className="mt-4 text-sm font-medium tracking-wide">
+              Any model you want
+            </h3>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              Connect any OpenAI- or Anthropic-compatible endpoint with a base
+              URL, an API key, and a model ID — OpenRouter, DeepSeek, a local
+              server, wherever you already run models. The built-in gateway
+              stays available when you just want to translate.
+            </p>
+          </motion.div>
+          <motion.div
+            {...fadeUp}
+            viewport={{ once: true, margin: "-60px" }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{
+              duration: 0.5,
+              delay: 0.08,
+              ease: [0.22, 1, 0.36, 1],
+            }}
+            className="border-t border-border/70 py-6 sm:px-8 sm:last:pr-0"
+          >
+            <Languages className="size-4 text-muted-foreground" />
+            <h3 className="mt-4 text-sm font-medium tracking-wide">
+              Any direction you need
+            </h3>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              Read the raw chapter in English or Chinese, and ask for the
+              translation in Indonesian or English. The same standards apply in
+              every direction — names and techniques never get “adapted.”
             </p>
           </motion.div>
         </div>

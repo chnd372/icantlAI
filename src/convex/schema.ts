@@ -41,6 +41,9 @@ const schema = defineSchema(
       novelName: v.optional(v.string()), // series or novel this chapter belongs to
       sourceText: v.string(),
       model: v.string(),
+      providerId: v.optional(v.id("aiProviders")), // custom AI provider used, if any
+      sourceLang: v.union(v.literal("english"), v.literal("chinese")),
+      targetLang: v.union(v.literal("english"), v.literal("indonesian")),
       status: v.union(
         v.literal("draft"),
         v.literal("translating"),
@@ -50,6 +53,20 @@ const schema = defineSchema(
       error: v.optional(v.string()),
       segmentCount: v.number(),
       completedSegments: v.number(),
+      createdAt: v.number(),
+      updatedAt: v.number(),
+    }).index("by_user", ["userId", "createdAt"]),
+
+    // Custom AI providers configured by the user (OpenAI- or Anthropic-
+    // compatible endpoints). The API key lives only in the database and is
+    // read server-side by actions; it is never returned to the client.
+    aiProviders: defineTable({
+      userId: v.id("users"),
+      name: v.string(),
+      providerType: v.union(v.literal("openai"), v.literal("anthropic")),
+      baseUrl: v.string(),
+      apiKey: v.string(),
+      modelId: v.string(),
       createdAt: v.number(),
       updatedAt: v.number(),
     }).index("by_user", ["userId", "createdAt"]),

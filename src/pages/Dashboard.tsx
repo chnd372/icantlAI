@@ -13,10 +13,12 @@ import {
   LogOut,
   RefreshCw,
   Search,
+  Settings2,
   Trash2,
   Upload,
 } from "lucide-react";
 
+import { ProvidersDialog } from "@/components/ProvidersDialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -31,7 +33,9 @@ import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -42,6 +46,9 @@ import { useAuth } from "@/hooks/use-auth";
 import { countWords, extractTitle, splitChapter } from "@/lib/chapter-split";
 import { cn } from "@/lib/utils";
 
+type SourceLang = "english" | "chinese";
+type TargetLang = "indonesian" | "english";
+
 const MODELS = [
   { id: "gpt-4o-mini", label: "Fast", detail: "gpt-4o-mini" },
   { id: "gpt-4o", label: "Balanced", detail: "gpt-4o" },
@@ -49,6 +56,18 @@ const MODELS = [
 ] as const;
 
 const MAX_FILE_SIZE = 250_000; // characters
+
+const LANG_LABEL: Record<string, string> = {
+  english: "EN",
+  chinese: "ZH",
+  indonesian: "ID",
+};
+
+function langPair(sourceLang: string, targetLang: string) {
+  return `${LANG_LABEL[sourceLang] ?? sourceLang} → ${
+    LANG_LABEL[targetLang] ?? targetLang
+  }`;
+}
 
 function formatDate(timestamp: number) {
   return new Date(timestamp).toLocaleDateString(undefined, {
@@ -75,7 +94,10 @@ export default function Dashboard() {
   const convex = useConvex();
 
   const [tab, setTab] = useState<Tab>("translate");
-  const [model, setModel] = useState<string>("gpt-4o-mini");
+  const [providerChoice, setProviderChoice] = useState("vly:gpt-4o-mini");
+  const [sourceLang, setSourceLang] = useState<SourceLang>("english");
+  const [targetLang, setTargetLang] = useState<TargetLang>("indonesian");
+  const [providersOpen, setProvidersOpen] = useState(false);
   const [novelName, setNovelName] = useState("");
   const [localSource, setLocalSource] = useState<string | null>(null);
   const [localFileName, setLocalFileName] = useState<string | null>(null);
@@ -103,10 +125,19 @@ export default function Dashboard() {
   const deleteTranslation = useMutation(api.translations.deleteTranslation);
 
   const translations = useQuery(api.translations.listTranslations);
+  const providers = useQuery(api.providers.listProviders);
   const active = useQuery(
     api.translations.getTranslation,
     activeId ? { translationId: activeId } : "skip",
   );
+
+  const isCustom = providerChoice.startsWith("custom:");
+  const selectedProviderId = isCustom
+    ? (providerChoice.slice("custom:".length) as Id<"aiProviders">)
+    : undefined;
+  const selectedVlyModel = providerChoice.startsWith("vly:")
+    ? providerChoice.slice("vly:".length)
+    : "gpt-4o-mini";
 
   const displaySource = localSource ?? active?.translation.sourceText ?? null;
   const displayFileName = localFileName ?? active?.translation.fileName ?? null;
@@ -167,7 +198,12 @@ export default function Dashboard() {
   const runSegments = useCallback(
     async (
       items: { segmentId: Id<"translationSegments">; sourceText: string }[],
-      modelName: string,
+      options: {
+        sourceLang: SourceLang;
+        targetLang: TargetLang;
+        providerId?: Id<"aiProviders">;
+        model: string;
+      },
     ) => {
       if (runningRef.current) return;
       runningRef.current = true;
@@ -177,7 +213,10 @@ export default function Dashboard() {
           await translateSegmentAction({
             segmentId: item.segmentId,
             sourceText: item.sourceText,
-            model: modelName,
+            sourceLang: options.sourceLang,
+            targetLang: options.targetLang,
+            providerId: options.providerId,
+            model: options.model,
           });
         }
         toast.success("Chapter translated and filed in your catalog.");
@@ -208,13 +247,28 @@ export default function Dashboard() {
       return;
     }
 
+    const chosenProvider = providers?.find((p) => p._id === selectedProviderId);
+    if (isCustom && !chosenProvider) {
+      toast.error("That provider no longer exists — pick another one.");
+      return;
+    }
+    const options = {
+      sourceLang,
+      targetLang,
+      providerId: isCustom ? selectedProviderId : undefined,
+      model: isCustom ? (chosenProvider?.modelId ?? "custom") : selectedVlyModel,
+    };
+
     try {
       const id = await createTranslation({
         fileName: displayFileName ?? "chapter.txt",
         title: extractTitle(displaySource) ?? undefined,
         novelName: novelName.trim() || undefined,
         sourceText: displaySource,
-        model,
+        model: options.model,
+        providerId: options.providerId,
+        sourceLang: options.sourceLang,
+        targetLang: options.targetLang,
         segments: segments.map((s) => ({ index: s.index, sourceText: s.sourceText })),
       });
       await startTranslation({ translationId: id });
@@ -228,7 +282,7 @@ export default function Dashboard() {
           segmentId: s._id,
           sourceText: s.sourceText,
         })) ?? [];
-      await runSegments(items, model);
+      await runSegments(items, options);
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Could not start the translation.",
@@ -245,7 +299,12 @@ export default function Dashboard() {
     await startTranslation({ translationId: active.translation._id });
     await runSegments(
       pending.map((s) => ({ segmentId: s._id, sourceText: s.sourceText })),
-      active.translation.model,
+      {
+        sourceLang: active.translation.sourceLang as SourceLang,
+        targetLang: active.translation.targetLang as TargetLang,
+        providerId: active.translation.providerId ?? undefined,
+        model: active.translation.model,
+      },
     );
   };
 
@@ -303,7 +362,7 @@ export default function Dashboard() {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `${name} - Indonesian.txt`;
+    anchor.download = `${name} - ${LANG_LABEL[targetLang]}.txt`;
     anchor.click();
     URL.revokeObjectURL(url);
   };
@@ -320,6 +379,8 @@ export default function Dashboard() {
         sourceText: importSource.trim() || undefined,
         translatedText: text,
         model: "imported",
+        sourceLang: "english",
+        targetLang: "indonesian",
       });
       setImportOpen(false);
       setImportTitle("");
@@ -353,22 +414,46 @@ export default function Dashboard() {
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
-            <Select value={model} onValueChange={setModel}>
+            <Select value={providerChoice} onValueChange={setProviderChoice}>
               <SelectTrigger
                 size="sm"
-                className="w-fit rounded-sm border-border/80 bg-transparent text-xs"
-                aria-label="Translation model"
+                className="w-fit max-w-56 rounded-sm border-border/80 bg-transparent text-xs"
+                aria-label="AI provider"
               >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="rounded-sm">
-                {MODELS.map((m) => (
-                  <SelectItem key={m.id} value={m.id}>
-                    {m.label} · {m.detail}
-                  </SelectItem>
-                ))}
+                <SelectGroup>
+                  <SelectLabel>Built-in gateway</SelectLabel>
+                  {MODELS.map((m) => (
+                    <SelectItem key={`vly:${m.id}`} value={`vly:${m.id}`}>
+                      {m.label} · {m.detail}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+                {providers && providers.length > 0 && (
+                  <SelectGroup>
+                    <SelectLabel>Your providers</SelectLabel>
+                    {providers.map((p) => (
+                      <SelectItem key={`custom:${p._id}`} value={`custom:${p._id}`}>
+                        {p.name} · {p.modelId}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                )}
               </SelectContent>
             </Select>
+
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-8 rounded-sm text-muted-foreground hover:text-foreground"
+              aria-label="Manage AI providers"
+              onClick={() => setProvidersOpen(true)}
+            >
+              <Settings2 className="size-4" />
+            </Button>
 
             {user?.name && (
               <span className="hidden text-xs text-muted-foreground lg:inline">
@@ -527,7 +612,11 @@ export default function Dashboard() {
                     </span>
                     {active && (
                       <span className="text-[11px] text-muted-foreground">
-                        {modelLabel(active.translation.model)}
+                        {langPair(
+                          active.translation.sourceLang,
+                          active.translation.targetLang,
+                        )}{" "}
+                        · {modelLabel(active.translation.model)}
                       </span>
                     )}
                   </div>
@@ -628,7 +717,8 @@ export default function Dashboard() {
                           <Download className="mr-1.5 size-3.5" /> Download .txt
                         </Button>
                         <span className="ml-auto hidden text-[11px] text-muted-foreground sm:inline">
-                          {countWords(translatedText).toLocaleString()} words · Indonesian
+                          {countWords(translatedText).toLocaleString()} words ·{" "}
+                          {LANG_LABEL[active.translation.targetLang]}
                         </span>
                       </div>
                     </div>
@@ -638,14 +728,62 @@ export default function Dashboard() {
             </div>
 
             {/* Action bar */}
-            <div className="mt-6 flex flex-wrap items-center gap-3">
-              <Input
-                value={novelName}
-                onChange={(e) => setNovelName(e.target.value)}
-                placeholder="Novel / series (optional)"
-                className="w-full max-w-56 rounded-sm border-border/80 bg-card text-sm shadow-none"
-                disabled={running}
-              />
+            <div className="mt-6 flex flex-wrap items-end gap-x-4 gap-y-3">
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[10px] font-medium tracking-[0.18em] text-muted-foreground uppercase">
+                  Series
+                </span>
+                <Input
+                  value={novelName}
+                  onChange={(e) => setNovelName(e.target.value)}
+                  placeholder="Novel / series (optional)"
+                  className="w-full max-w-52 rounded-sm border-border/80 bg-card text-sm shadow-none"
+                  disabled={running}
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[10px] font-medium tracking-[0.18em] text-muted-foreground uppercase">
+                  Source language
+                </span>
+                <Select
+                  value={sourceLang}
+                  onValueChange={(value) => setSourceLang(value as SourceLang)}
+                >
+                  <SelectTrigger
+                    size="sm"
+                    className="w-32 rounded-sm border-border/80 bg-card text-xs shadow-none"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-sm">
+                    <SelectItem value="english">English</SelectItem>
+                    <SelectItem value="chinese">Chinese</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[10px] font-medium tracking-[0.18em] text-muted-foreground uppercase">
+                  Output language
+                </span>
+                <Select
+                  value={targetLang}
+                  onValueChange={(value) => setTargetLang(value as TargetLang)}
+                >
+                  <SelectTrigger
+                    size="sm"
+                    className="w-32 rounded-sm border-border/80 bg-card text-xs shadow-none"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-sm">
+                    <SelectItem value="indonesian">Indonesian</SelectItem>
+                    <SelectItem value="english">English</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
               <Button
                 type="button"
                 className="rounded-sm px-6 shadow-none hover:bg-foreground/90"
@@ -766,7 +904,12 @@ export default function Dashboard() {
                           {t.title ?? t.fileName}
                         </p>
                         <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
-                          {[t.novelName, t.fileName, formatDate(t.createdAt)]
+                          {[
+                            langPair(t.sourceLang, t.targetLang),
+                            t.novelName,
+                            t.fileName,
+                            formatDate(t.createdAt),
+                          ]
                             .filter(Boolean)
                             .join(" · ")}
                         </p>
@@ -898,6 +1041,9 @@ export default function Dashboard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Providers dialog */}
+      <ProvidersDialog open={providersOpen} onOpenChange={setProvidersOpen} />
     </main>
   );
 }
