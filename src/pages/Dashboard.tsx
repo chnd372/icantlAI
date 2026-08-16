@@ -966,7 +966,8 @@ export default function Dashboard() {
           </button>
         </div>
 
-        {tab === "translate" ? (
+        {/* Keep all panels mounted; hide inactive ones so state survives tab switches */}
+        <div className={tab === "translate" ? "" : "hidden"}>
           <div className="pt-6">
             {/* Source / Translation panels */}
             <div className="grid gap-6 lg:grid-cols-2">
@@ -1511,8 +1512,9 @@ export default function Dashboard() {
               )}
             </section>
           </div>
-        ) : tab === "catalog" ? (
-          /* Catalog */
+        </div>
+        <div className={tab === "catalog" ? "" : "hidden"}>
+          {/* Catalog */}
           <div className="pt-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="relative w-full max-w-sm">
@@ -1745,15 +1747,17 @@ export default function Dashboard() {
               </>
             )}
           </div>
-        ) : tab === "settings" ? (
+        </div>
+        <div className={tab === "settings" ? "" : "hidden"}>
           <SettingsTab />
-        ) : (
+        </div>
+        <div className={tab === "comic" ? "" : "hidden"}>
           <ComicTranslator
             providers={providers}
             selectedProviderId={selectedProviderId}
             onOpenProviders={() => setTab("settings")}
           />
-        )}
+        </div>
       </div>
 
       {/* Catalog result viewer */}
