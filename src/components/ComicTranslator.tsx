@@ -448,17 +448,6 @@ export function ComicTranslator({
     }
   };
 
-  const downloadText = (text: string, fileName: string) => {
-    if (!text) return;
-    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = fileName;
-    anchor.click();
-    URL.revokeObjectURL(url);
-  };
-
   const pageFileBase = (name: string) =>
     `${baseName(name)} - ${resolveLangCode(targetLang).toUpperCase()}`;
 
@@ -474,18 +463,6 @@ export function ComicTranslator({
     void copyText(
       combined,
       `${donePages.length} page${donePages.length === 1 ? "" : "s"} copied.`,
-    );
-  };
-
-  const handleDownloadAll = () => {
-    if (donePages.length === 0) return;
-    const combined = donePages
-      .map((p) => `--- ${p.name} ---\n\n${p.translatedText}`)
-      .join("\n\n");
-    const label = seriesName.trim() || "comic";
-    downloadText(
-      combined,
-      `${label} - ${resolveLangCode(targetLang).toUpperCase()}.txt`,
     );
   };
 
@@ -740,21 +717,6 @@ export function ComicTranslator({
                           <Copy className="mr-1.5 size-3" />
                           Copy
                         </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-7 rounded-sm border-border/80 bg-transparent px-2 text-xs shadow-none"
-                          onClick={() =>
-                            downloadText(
-                              p.translatedText ?? "",
-                              `${pageFileBase(p.name)}.txt`,
-                            )
-                          }
-                        >
-                          <Download className="mr-1.5 size-3" />
-                          .txt
-                        </Button>
                         {p.overlays && p.overlays.length > 0 && (
                           <Button
                             type="button"
@@ -957,16 +919,6 @@ export function ComicTranslator({
             >
               <Check className="mr-1.5 size-3.5" />
               Copy all
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-8 rounded-sm border-border/80 bg-transparent px-3 text-xs shadow-none"
-              onClick={handleDownloadAll}
-            >
-              <Download className="mr-1.5 size-3.5" />
-              Download all .txt
             </Button>
             {donePages.some(
               (p) => p.overlays && p.overlays.length > 0,
