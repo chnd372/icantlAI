@@ -13,14 +13,6 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -62,13 +54,11 @@ const BASE_URL_HINTS: Record<ProviderType, string> = {
   anthropic: "https://api.anthropic.com",
 };
 
-export function ProvidersDialog({
-  open,
-  onOpenChange,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
+/**
+ * The full AI-provider management UI (list, add/edit form, model picker),
+ * rendered inside the Settings tab.
+ */
+export function ProvidersPanel() {
   const providers = useQuery(api.providers.listProviders);
   const saveProvider = useMutation(api.providers.saveProvider);
   const deleteProvider = useMutation(api.providers.deleteProvider);
@@ -272,20 +262,19 @@ export function ProvidersDialog({
     (editingId !== null || form.apiKey.trim() !== "");
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-sm p-5 sm:max-w-lg sm:p-6">
-        <DialogHeader>
-          <DialogTitle>AI providers</DialogTitle>
-          <DialogDescription>
-            Connect any OpenAI- or Anthropic-compatible endpoint and translate
-            with whichever model you want. All translations run through your
-            own providers.
-          </DialogDescription>
-        </DialogHeader>
+    <div>
+      <div className="border-b border-border/70 pb-4">
+        <h2 className="text-sm font-medium">AI providers</h2>
+        <p className="mt-1 max-w-xl text-xs leading-5 text-muted-foreground">
+          Connect any OpenAI- or Anthropic-compatible endpoint and translate
+          with whichever model you want. All translations run through your own
+          providers.
+        </p>
+      </div>
 
-        {showForm ? (
-          <>
-            <div className="space-y-4">
+      {showForm ? (
+        <>
+          <div className="mt-5 space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="provider-name" className="text-xs">
@@ -428,7 +417,7 @@ export function ProvidersDialog({
               </p>
             </div>
 
-            <DialogFooter className="flex-col items-stretch gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+            <div className="mt-5 flex flex-col items-stretch gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
               <Button
                 type="button"
                 variant="ghost"
@@ -446,11 +435,11 @@ export function ProvidersDialog({
                 {saving && <Loader2 className="mr-2 size-4 animate-spin" />}
                 {editingId ? "Save changes" : "Add provider"}
               </Button>
-            </DialogFooter>
+            </div>
           </>
         ) : (
           <>
-            <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
+            <div className="mt-5 max-h-96 space-y-2 overflow-y-auto pr-1">
               {providers && providers.length === 0 ? (
                 <p className="border-y border-border/70 py-8 text-center text-xs text-muted-foreground">
                   No custom providers yet. Add one to translate with any model
@@ -631,20 +620,19 @@ export function ProvidersDialog({
               )}
             </div>
 
-            <DialogFooter className="gap-2">
+            <div className="mt-5">
               <Button
                 type="button"
                 variant="outline"
-                className="w-full rounded-sm border-border/80 bg-transparent shadow-none"
+                className="w-full rounded-sm border-border/80 bg-transparent shadow-none sm:w-auto"
                 onClick={openAdd}
               >
                 <Plus className="mr-2 size-3.5" />
                 Add provider
               </Button>
-            </DialogFooter>
+            </div>
           </>
         )}
-      </DialogContent>
-    </Dialog>
+    </div>
   );
 }

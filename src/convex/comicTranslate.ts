@@ -130,19 +130,14 @@ async function resolveProviderModel(provider: ProviderForAction): Promise<string
   return model;
 }
 
-/** Extract text + boxes via the ocr.space API (free tier, key from server env). */
+/** Extract text + boxes via the ocr.space API (free tier). */
 async function extractViaOcrSpace(
+  apiKey: string,
   imageData: string,
   sourceLang: string,
   imageWidth: number,
   imageHeight: number,
 ): Promise<{ text: string; boxes: TextBox[] }> {
-  const apiKey = process.env.OCR_SPACE_API_KEY;
-  if (!apiKey) {
-    throw new Error(
-      "OCR.space needs an API key. Set OCR_SPACE_API_KEY as a Convex environment variable (project's API Keys tab, or Convex dashboard → Environment Variables), then retry. Get a free key at ocr.space.",
-    );
-  }
 
   const form = new URLSearchParams();
   form.set("apikey", apiKey);
@@ -355,7 +350,20 @@ export const ocrComicPage = action({
     if (userId === null) throw new Error("Not signed in");
 
     if (args.ocrMethod === "ocrspace") {
+      // Prefer the key stored per user in Settings; fall back to a
+      // deployment-level OCR_SPACE_API_KEY env var if set.
+      const storedKey = await ctx.runQuery(
+        internal.settings.getOcrSpaceApiKeyForAction,
+        { userId },
+      );
+      const apiKey = storedKey ?? process.env.OCR_SPACE_API_KEY;
+      if (!apiKey) {
+        throw new Error(
+          "OCR.space needs an API key — add it in Settings → OCR.space (free key at ocr.space), or set OCR_SPACE_API_KEY as a Convex environment variable.",
+        );
+      }
       const extracted = await extractViaOcrSpace(
+        apiKey,
         args.imageData,
         args.sourceLang,
         args.imageWidth,

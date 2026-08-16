@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 
 import { ComicTranslator } from "@/components/ComicTranslator";
-import { ProvidersDialog } from "@/components/ProvidersDialog";
+import { SettingsTab } from "@/components/SettingsTab";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -103,7 +103,7 @@ function modelLabel(model: string) {
   return model === "imported" ? "Imported" : model;
 }
 
-type Tab = "translate" | "comic" | "catalog";
+type Tab = "translate" | "comic" | "catalog" | "settings";
 
 export default function Dashboard() {
   const { user, signOut } = useAuth();
@@ -114,7 +114,6 @@ export default function Dashboard() {
   const [selectedProviderId, setSelectedProviderId] = useState<Id<"aiProviders"> | "">("");
   const [sourceLang, setSourceLang] = useState("en");
   const [targetLang, setTargetLang] = useState("id");
-  const [providersOpen, setProvidersOpen] = useState(false);
   const [novelName, setNovelName] = useState("");
   const [localSource, setLocalSource] = useState<string | null>(null);
   const [localFileName, setLocalFileName] = useState<string | null>(null);
@@ -827,8 +826,8 @@ export default function Dashboard() {
                   variant="ghost"
                   size="icon"
                   className="size-8 rounded-sm text-muted-foreground hover:text-foreground"
-                  aria-label="Manage AI providers"
-                  onClick={() => setProvidersOpen(true)}
+                  aria-label="Open settings"
+                  onClick={() => setTab("settings")}
                 >
                   <Settings2 className="size-4" />
                 </Button>
@@ -894,8 +893,8 @@ export default function Dashboard() {
               variant="ghost"
               size="icon"
               className="size-8 shrink-0 rounded-sm text-muted-foreground hover:text-foreground"
-              aria-label="Manage AI providers"
-              onClick={() => setProvidersOpen(true)}
+              aria-label="Open settings"
+              onClick={() => setTab("settings")}
             >
               <Settings2 className="size-4" />
             </Button>
@@ -952,6 +951,18 @@ export default function Dashboard() {
                 {translations.length}
               </span>
             )}
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("settings")}
+            className={cn(
+              "-mb-px border-b-2 px-1 pb-3 text-sm transition-colors",
+              tab === "settings"
+                ? "border-foreground font-medium text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground",
+            )}
+          >
+            Settings
           </button>
         </div>
 
@@ -1734,11 +1745,13 @@ export default function Dashboard() {
               </>
             )}
           </div>
+        ) : tab === "settings" ? (
+          <SettingsTab />
         ) : (
           <ComicTranslator
             providers={providers}
             selectedProviderId={selectedProviderId}
-            onOpenProviders={() => setProvidersOpen(true)}
+            onOpenProviders={() => setTab("settings")}
           />
         )}
       </div>
@@ -1918,8 +1931,6 @@ export default function Dashboard() {
         </DialogContent>
       </Dialog>
 
-      {/* Providers dialog */}
-      <ProvidersDialog open={providersOpen} onOpenChange={setProvidersOpen} />
     </main>
   );
 }

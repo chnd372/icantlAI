@@ -59,6 +59,15 @@ const schema = defineSchema(
       updatedAt: v.number(),
     }).index("by_user", ["userId", "createdAt"]),
 
+    // OCR.space API key for comic pages, stored per user. Kept out of the
+    // users document so the client query never returns the raw key.
+    ocrSettings: defineTable({
+      userId: v.id("users"),
+      apiKey: v.string(),
+      createdAt: v.number(),
+      updatedAt: v.number(),
+    }).index("by_user", ["userId"]),
+
     // Custom AI providers configured by the user (OpenAI- or Anthropic-
     // compatible endpoints). The API key lives only in the database and is
     // read server-side by actions; it is never returned to the client.
