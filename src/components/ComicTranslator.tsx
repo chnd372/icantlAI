@@ -55,7 +55,7 @@ interface ComicTranslatorProps {
   onOpenProviders: () => void;
 }
 
-const MAX_PAGES = 30;
+const MAX_PAGES = 150;
 
 function baseName(name: string) {
   return name.replace(/\.[^.]+$/, "");
@@ -127,9 +127,12 @@ export function ComicTranslator({
   );
   const [running, setRunning] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [adding, setAdding] = useState(false);
   const runningRef = useRef(false);
+  const addingRef = useRef(false);
   const keyRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const filesCountRef = useRef(0);
   const pagesRef = useRef(pages);
   pagesRef.current = pages;
 
@@ -154,6 +157,7 @@ export function ComicTranslator({
   const chosenProvider = providers?.find((p) => p._id === providerId);
 
   const handleFiles = async (fileList: FileList | File[]) => {
+    if (addingRef.current || runningRef.current) return;
     const files = Array.from(fileList).filter((f) =>
       f.type.startsWith("image/"),
     );
@@ -166,28 +170,36 @@ export function ComicTranslator({
       return;
     }
 
+    filesCountRef.current = files.length;
+    addingRef.current = true;
+    setAdding(true);
     const loaded: ComicPage[] = [];
-    for (const file of files) {
-      const previewUrl = URL.createObjectURL(file);
-      try {
-        const dataUrl = await compressImage(file);
-        loaded.push({
-          key: `c-${++keyRef.current}`,
-          name: file.name,
-          previewUrl,
-          dataUrl,
-          status: "ready",
-        });
-      } catch {
-        URL.revokeObjectURL(previewUrl);
-        toast.error(`Could not read ${file.name}.`);
+    try {
+      for (const file of files) {
+        const previewUrl = URL.createObjectURL(file);
+        try {
+          const dataUrl = await compressImage(file);
+          loaded.push({
+            key: `c-${++keyRef.current}`,
+            name: file.name,
+            previewUrl,
+            dataUrl,
+            status: "ready",
+          });
+        } catch {
+          URL.revokeObjectURL(previewUrl);
+          toast.error(`Could not read ${file.name}.`);
+        }
       }
-    }
-    if (loaded.length > 0) {
-      setPages((prev) => [...prev, ...loaded]);
-      toast.success(
-        `${loaded.length} page${loaded.length === 1 ? "" : "s"} added.`,
-      );
+      if (loaded.length > 0) {
+        setPages((prev) => [...prev, ...loaded]);
+        toast.success(
+          `${loaded.length} page${loaded.length === 1 ? "" : "s"} added.`,
+        );
+      }
+    } finally {
+      addingRef.current = false;
+      setAdding(false);
     }
   };
 
@@ -348,6 +360,12 @@ export function ComicTranslator({
                 {pages.length} page{pages.length === 1 ? "" : "s"}
               </span>
             )}
+            {adding && (
+              <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                <Loader2 className="size-3 animate-spin" />
+                Processing images…
+              </span>
+            )}
           </div>
           {pages.length > 0 && (
             <Button
@@ -355,7 +373,7 @@ export function ComicTranslator({
               variant="ghost"
               size="sm"
               className="h-7 rounded-sm px-2 text-xs text-muted-foreground hover:text-foreground"
-              disabled={running}
+              disabled={running || adding}
               onClick={() => fileInputRef.current?.click()}
             >
               <Upload className="mr-1.5 size-3.5" />
@@ -384,7 +402,7 @@ export function ComicTranslator({
             )}
             onClick={(e) => {
               e.preventDefault();
-              if (!running) fileInputRef.current?.click();
+              if (!running && !adding) fileInputRef.current?.click();
             }}
             onDragOver={(e) => {
               e.preventDefault();
@@ -394,7 +412,7 @@ export function ComicTranslator({
             onDrop={(e) => {
               e.preventDefault();
               setDragOver(false);
-              if (!running) void handleFiles(e.dataTransfer.files);
+              if (!running && !adding) void handleFiles(e.dataTransfer.files);
             }}
           >
             <div className="flex size-10 items-center justify-center rounded-sm border border-border/70 bg-background">
@@ -403,8 +421,9 @@ export function ComicTranslator({
             <div>
               <p className="text-sm font-medium">Drop comic pages here</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                or click to browse · PNG, JPG, WebP · up to {MAX_PAGES} pages
-                per batch
+                {adding
+                  ? `Processing ${filesCountRef.current} images…`
+                  : `or click to browse · PNG, JPG, WebP · up to ${MAX_PAGES} pages per batch`}
               </p>
             </div>
           </label>
@@ -662,7 +681,7 @@ export function ComicTranslator({
           <Button
             type="button"
             className="w-full justify-center rounded-sm px-6 shadow-none hover:bg-foreground/90 sm:w-auto"
-            disabled={running || !hasWork || !chosenProvider}
+            disabled={running || adding || !hasWork || !chosenProvider}
             onClick={() => void handleTranslate()}
           >
             {running ? (
