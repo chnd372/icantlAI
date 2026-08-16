@@ -126,6 +126,7 @@ export function ComicTranslator({
     selectedProviderId,
   );
   const [running, setRunning] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
   const runningRef = useRef(false);
   const keyRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -376,7 +377,26 @@ export function ComicTranslator({
         />
 
         {pages.length === 0 ? (
-          <label className="flex cursor-pointer flex-col items-center justify-center gap-3 px-8 py-14 text-center transition-colors hover:bg-muted/40">
+          <label
+            className={cn(
+              "flex cursor-pointer flex-col items-center justify-center gap-3 px-8 py-14 text-center transition-colors",
+              dragOver ? "bg-muted/70" : "hover:bg-muted/40",
+            )}
+            onClick={(e) => {
+              e.preventDefault();
+              if (!running) fileInputRef.current?.click();
+            }}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragOver(true);
+            }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragOver(false);
+              if (!running) void handleFiles(e.dataTransfer.files);
+            }}
+          >
             <div className="flex size-10 items-center justify-center rounded-sm border border-border/70 bg-background">
               <ImagePlus className="size-4 text-muted-foreground" />
             </div>
