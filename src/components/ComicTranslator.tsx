@@ -934,7 +934,9 @@ export function ComicTranslator({
             <span className="font-medium text-foreground">
               OCR_SPACE_API_KEY
             </span>{" "}
-            in the Keys tab; without it, this engine stays disabled.
+            in the API Keys tab of the preview toolbar (Preview · Data · API
+            Keys · Integrations), or in the Convex dashboard → Environment
+            Variables. Without it, this engine stays disabled.
           </p>
         )}
       </div>
