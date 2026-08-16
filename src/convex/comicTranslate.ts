@@ -15,7 +15,8 @@ import { buildTranslationPrompt } from "./translationPrompt";
 
 /**
  * One detected text region, normalized to 0..1 fractions of the image so the
- * boxes stay valid whatever resolution the client renders at.
+ * boxes stay valid whatever resolution the client renders at. `text` is the
+ * raw OCR text of that region, in reading order.
  */
 interface TextBox {
   text: string;
@@ -74,12 +75,42 @@ Reply with ONLY a JSON object and nothing else, in this exact shape:
 - Each box must tightly enclose just that one text.
 - If the page has no readable text, reply with exactly: NO TEXT`;
 
+/** Clean OCR garbage (misrecognized chars, spacing, punctuation) before translating. */
+const CLEAN_PROMPT = `You are cleaning OCR output extracted from a comic, manga, manhua, or manhwa page.
+
+Fix the OCR text below:
+- Correct misrecognized characters, garbled words, and missing or doubled letters
+- Restore punctuation, capitalization, and proper spacing
+- Keep the ORIGINAL LANGUAGE — do NOT translate anything
+- Keep each bubble/box/line on its own line, in the same order as given
+- Drop lines that are pure noise or illegible
+- Do not add, summarize, or invent text
+
+Output only the cleaned text.`;
+
 interface ProviderForAction {
   providerType: "openai" | "anthropic";
   baseUrl: string;
   apiKey: string;
   modelId: string | null;
   models: string[];
+}
+
+async function fetchProvider(
+  ctx: any,
+  providerId: string,
+  userId: string,
+): Promise<ProviderForAction> {
+  const provider = (await ctx.runQuery(
+    internal.providers.getProviderForAction,
+    { providerId, userId },
+  )) as ProviderForAction | null;
+  if (!provider) {
+    throw new Error(
+      "AI provider no longer exists — check your provider settings.",
+    );
+  }
+  return provider;
 }
 
 /** Use the provider's fixed model, or auto-pick a chat-capable one. */
@@ -109,7 +140,7 @@ async function extractViaOcrSpace(
   const apiKey = process.env.OCR_SPACE_API_KEY;
   if (!apiKey) {
     throw new Error(
-      "OCR.space needs an API key — add OCR_SPACE_API_KEY in the Keys tab (free key at ocr.space).",
+      "OCR.space needs an API key. Set OCR_SPACE_API_KEY as a Convex environment variable (project's API Keys tab, or Convex dashboard → Environment Variables), then retry. Get a free key at ocr.space.",
     );
   }
 
@@ -277,23 +308,96 @@ async function extractViaVision(
   return { text: raw, boxes: [] };
 }
 
+/** Clean the raw OCR text with the same provider (never translates). */
+async function cleanOcrText(
+  provider: ProviderForAction,
+  modelId: string,
+  text: string,
+): Promise<string> {
+  const cleaned = await complete(provider.providerType, {
+    baseUrl: provider.baseUrl,
+    apiKey: provider.apiKey,
+    model: modelId,
+    system:
+      "You are an OCR post-processor. Clean the text; never translate or rewrite its meaning.",
+    user: `${CLEAN_PROMPT}\n\n---\n${text}`,
+    maxTokens: 4000,
+  });
+  return cleaned.trim() || text; // fall back to the raw text if empty
+}
+
 // ---------------------------------------------------------------------------
-// Action
+// Action 1: OCR (saved first, so a later failure never loses it)
 // ---------------------------------------------------------------------------
 
 /**
- * One comic/manhua/manhwa page: extract the text AND each text region's
- * bounding box (OCR.space or a vision LLM on the user's own provider), then
- * translate it with the same standard pipeline as novel chapters. The boxes
- * are paired with the translated lines so the client can typeset the result
- * back onto the image.
+ * Extract the raw text (and each text region's box, in reading order) from a
+ * comic page. The client saves this result immediately, then runs the
+ * clean + translate stage separately.
+ */
+export const ocrComicPage = action({
+  args: {
+    imageData: v.string(), // data URL of the (client-downscaled) page
+    imageWidth: v.number(),
+    imageHeight: v.number(),
+    ocrMethod: v.union(v.literal("ocrspace"), v.literal("vision")),
+    sourceLang: v.string(),
+    providerId: v.optional(v.id("aiProviders")),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
+    ocrText: string;
+    boxes: { text: string; x: number; y: number; w: number; h: number }[];
+  }> => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) throw new Error("Not signed in");
+
+    if (args.ocrMethod === "ocrspace") {
+      const extracted = await extractViaOcrSpace(
+        args.imageData,
+        args.sourceLang,
+        args.imageWidth,
+        args.imageHeight,
+      );
+      return { ocrText: extracted.text, boxes: extracted.boxes };
+    }
+
+    if (!args.providerId) {
+      throw new Error("Pick an AI provider — vision OCR runs through it.");
+    }
+    const provider = await fetchProvider(ctx, args.providerId, userId);
+    const extracted = await extractViaVision(
+      provider,
+      await resolveProviderModel(provider),
+      args.imageData,
+    );
+    return { ocrText: extracted.text, boxes: extracted.boxes };
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Action 2: clean + translate + pair boxes (for typesetting on the raw image)
+// ---------------------------------------------------------------------------
+
+/**
+ * Clean the saved OCR text, translate it with the same standard pipeline as
+ * novel chapters, and pair each translated line with its raw OCR box (1:1,
+ * reading order) so the client can implant the result onto the image.
  */
 export const translateComicPage = action({
   args: {
-    imageData: v.string(), // data URL of the (client-downscaled) page
-    imageWidth: v.number(), // pixel width of that downscaled page
-    imageHeight: v.number(), // pixel height of that downscaled page
-    ocrMethod: v.union(v.literal("ocrspace"), v.literal("vision")),
+    ocrText: v.string(),
+    boxes: v.array(
+      v.object({
+        text: v.string(),
+        x: v.number(),
+        y: v.number(),
+        w: v.number(),
+        h: v.number(),
+      }),
+    ),
     sourceLang: v.string(),
     targetLang: v.string(),
     providerId: v.id("aiProviders"),
@@ -302,39 +406,20 @@ export const translateComicPage = action({
     ctx,
     args,
   ): Promise<{
-    ocrText: string;
+    cleanedText: string;
     translatedText: string;
     overlays: { x: number; y: number; w: number; h: number; text: string }[];
   }> => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) throw new Error("Not signed in");
 
-    const provider = (await ctx.runQuery(
-      internal.providers.getProviderForAction,
-      { providerId: args.providerId, userId },
-    )) as ProviderForAction | null;
-    if (!provider) {
-      throw new Error(
-        "AI provider no longer exists — check your provider settings.",
-      );
-    }
+    const provider = await fetchProvider(ctx, args.providerId, userId);
+    const modelId = await resolveProviderModel(provider);
 
-    // 1) Extract the raw text (and boxes) from the page.
-    const extracted =
-      args.ocrMethod === "ocrspace"
-        ? await extractViaOcrSpace(
-            args.imageData,
-            args.sourceLang,
-            args.imageWidth,
-            args.imageHeight,
-          )
-        : await extractViaVision(
-            provider,
-            await resolveProviderModel(provider),
-            args.imageData,
-          );
+    // 1) Clean the OCR output so the translation starts from readable text.
+    const cleanedText = await cleanOcrText(provider, modelId, args.ocrText);
 
-    // 2) Translate it with the same standard pipeline as chapters.
+    // 2) Translate the cleaned text.
     const customPrompt = await ctx.runQuery(
       internal.settings.getCustomPromptForAction,
       { userId },
@@ -346,9 +431,8 @@ export const translateComicPage = action({
     );
     const user = `The text below was extracted from a comic/manga/manhwa page. Translate it into ${languageName(
       args.targetLang,
-    )}, keeping every dialogue line, caption, and sound effect on its own line, in reading order. Keep character names, titles, and honorifics untranslated. Output only the translated text.\n\n---\n${extracted.text}`;
+    )}, keeping every dialogue line, caption, and sound effect on its own line, in reading order. Keep character names, titles, and honorifics untranslated. Output only the translated text.\n\n---\n${cleanedText}`;
 
-    const modelId = await resolveProviderModel(provider);
     const translatedText = (
       await complete(provider.providerType, {
         baseUrl: provider.baseUrl,
@@ -364,13 +448,13 @@ export const translateComicPage = action({
       throw new Error("Empty response from the model");
     }
 
-    // 3) Pair each detected text region with its translated line (1:1,
-    // reading order). Boxes without a translated line are dropped.
+    // 3) Pair each raw OCR box with its translated line. Boxes without a
+    // translated line are dropped so the overlay never draws empty panels.
     const translatedLines = translatedText
       .split("\n")
       .map((s) => s.trim())
       .filter(Boolean);
-    const overlays = extracted.boxes
+    const overlays = args.boxes
       .map((box, i) => ({
         x: box.x,
         y: box.y,
@@ -380,6 +464,6 @@ export const translateComicPage = action({
       }))
       .filter((o) => o.text);
 
-    return { ocrText: extracted.text, translatedText, overlays };
+    return { cleanedText, translatedText, overlays };
   },
 });

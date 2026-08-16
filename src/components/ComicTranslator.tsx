@@ -48,9 +48,11 @@ interface ComicPage {
   width: number; // compressed image width
   height: number; // compressed image height
   status: "ready" | "processing" | "done" | "error";
-  ocrText?: string;
+  ocrText?: string; // raw OCR, saved as soon as stage 1 finishes
+  boxes?: ComicOverlay[]; // raw OCR boxes, reading order
+  cleanedText?: string; // OCR output after the cleaning pass
   translatedText?: string;
-  overlays?: ComicOverlay[];
+  overlays?: ComicOverlay[]; // translated lines paired with their boxes
   error?: string;
 }
 
@@ -246,6 +248,7 @@ export function ComicTranslator({
   selectedProviderId,
   onOpenProviders,
 }: ComicTranslatorProps) {
+  const ocrComicPage = useAction(api.comicTranslate.ocrComicPage);
   const translateComicPage = useAction(api.comicTranslate.translateComicPage);
 
   const [pages, setPages] = useState<ComicPage[]>([]);
@@ -365,11 +368,36 @@ export function ComicTranslator({
           ),
         );
         try {
+          // Stage 1 — OCR. Skipped when the raw text was already saved (a
+          // retry after a translation failure re-runs only stage 2).
+          let ocrText = page.ocrText;
+          let boxes = page.boxes ?? [];
+          if (!ocrText) {
+            const ocr = await ocrComicPage({
+              imageData: page.dataUrl,
+              imageWidth: page.width,
+              imageHeight: page.height,
+              ocrMethod,
+              sourceLang,
+              providerId: providerId as Id<"aiProviders">,
+            });
+            ocrText = ocr.ocrText;
+            boxes = ocr.boxes;
+            // Save the raw OCR immediately so a later failure never loses it.
+            setPages((prev) =>
+              prev.map((p) =>
+                p.key === page.key
+                  ? { ...p, ocrText: ocr.ocrText, boxes: ocr.boxes }
+                  : p,
+              ),
+            );
+          }
+
+          // Stage 2 — clean the OCR text, translate it, and pair the lines
+          // with the raw OCR boxes (reading order) for typesetting.
           const result = await translateComicPage({
-            imageData: page.dataUrl,
-            imageWidth: page.width,
-            imageHeight: page.height,
-            ocrMethod,
+            ocrText,
+            boxes,
             sourceLang,
             targetLang,
             providerId: providerId as Id<"aiProviders">,
@@ -380,7 +408,7 @@ export function ComicTranslator({
                 ? {
                     ...p,
                     status: "done",
-                    ocrText: result.ocrText,
+                    cleanedText: result.cleanedText,
                     translatedText: result.translatedText,
                     overlays: result.overlays,
                   }
@@ -661,13 +689,23 @@ export function ComicTranslator({
                         {p.error}
                       </div>
                     )}
-                    {p.status === "done" && p.ocrText && (
+                    {p.ocrText && p.status !== "processing" && (
                       <details className="rounded-sm border border-border/70">
                         <summary className="cursor-pointer px-2.5 py-1.5 text-[10px] font-medium tracking-[0.18em] text-muted-foreground uppercase select-none hover:text-foreground">
                           OCR text
                         </summary>
                         <pre className="max-h-28 overflow-y-auto border-t border-border/70 px-2.5 py-2 text-[11px] leading-5 whitespace-pre-wrap text-muted-foreground">
                           {p.ocrText}
+                        </pre>
+                      </details>
+                    )}
+                    {p.cleanedText && p.status !== "processing" && (
+                      <details className="rounded-sm border border-border/70">
+                        <summary className="cursor-pointer px-2.5 py-1.5 text-[10px] font-medium tracking-[0.18em] text-muted-foreground uppercase select-none hover:text-foreground">
+                          Cleaned text
+                        </summary>
+                        <pre className="max-h-28 overflow-y-auto border-t border-border/70 px-2.5 py-2 text-[11px] leading-5 whitespace-pre-wrap text-muted-foreground">
+                          {p.cleanedText}
                         </pre>
                       </details>
                     )}
