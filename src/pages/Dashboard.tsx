@@ -12,6 +12,7 @@ import {
   Files,
   Loader2,
   LogOut,
+  Minus,
   PenLine,
   RefreshCw,
   Search,
@@ -24,6 +25,7 @@ import {
 import { ProvidersDialog } from "@/components/ProvidersDialog";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -120,6 +122,11 @@ export default function Dashboard() {
   const [sourceInputMode, setSourceInputMode] = useState<"upload" | "paste">("upload");
   const [pasteText, setPasteText] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<Id<"translations"> | null>(null);
+
+  // Catalog bulk selection
+  const [selectedIds, setSelectedIds] = useState<Set<Id<"translations">>>(new Set());
+  const [confirmDeleteSelected, setConfirmDeleteSelected] = useState(false);
+  const [selectedCopied, setSelectedCopied] = useState(false);
 
   // Catalog result viewer
   const [viewerId, setViewerId] = useState<Id<"translations"> | null>(null);
@@ -576,24 +583,6 @@ export default function Dashboard() {
     }
   };
 
-  const handleOpenInTranslator = async (id: Id<"translations">) => {
-    if (runningRef.current || processingRef.current) return;
-    try {
-      const full = await convex.query(api.translations.getTranslation, {
-        translationId: id,
-      });
-      if (!full) return;
-      setLocalSource(full.translation.sourceText);
-      setLocalFileName(full.translation.fileName);
-      setNovelName(full.translation.novelName ?? "");
-      setActiveId(id);
-      setTab("translate");
-      setConfirmDeleteId(null);
-    } catch {
-      toast.error("Could not load that chapter.");
-    }
-  };
-
   const handleDelete = async (id: Id<"translations">) => {
     if (confirmDeleteId !== id) {
       setConfirmDeleteId(id);
@@ -608,6 +597,11 @@ export default function Dashboard() {
       setLocalSource(null);
       setLocalFileName(null);
     }
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
     setConfirmDeleteId(null);
     toast.success("Chapter removed from your catalog.");
   };
@@ -639,8 +633,102 @@ export default function Dashboard() {
   };
 
   const handleOpenViewer = (id: Id<"translations">) => {
-    if (runningRef.current || processingRef.current) return;
+    // The viewer may open even while a run is in progress — finished segments
+    // show up live as they complete.
     setViewerId(id);
+  };
+
+  // --- Catalog bulk selection -----------------------------------------------
+
+  const toggleSelected = (id: Id<"translations">) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    setSelectedIds((prev) => {
+      const allSelected =
+        filtered.length > 0 && filtered.every((t) => prev.has(t._id));
+      return allSelected ? new Set() : new Set(filtered.map((t) => t._id));
+    });
+  };
+
+  const handleCopySelected = async () => {
+    const items = (translations ?? []).filter((t) => selectedIds.has(t._id));
+    if (items.length === 0) return;
+    const parts: string[] = [];
+    for (const item of items) {
+      const full = await convex.query(api.translations.getTranslation, {
+        translationId: item._id,
+      });
+      const text =
+        full?.segments
+          .filter((s) => s.status === "done" && s.translatedText)
+          .map((s) => s.translatedText)
+          .join("\n\n") ?? "";
+      if (text) parts.push(`${item.title ?? item.fileName}\n\n${text}`);
+    }
+    if (parts.length === 0) {
+      toast.error("No translated text yet for the selected chapters.");
+      return;
+    }
+    await copyToClipboard(parts.join("\n\n---\n\n"), setSelectedCopied);
+    toast.success(`Copied ${parts.length} chapter${parts.length === 1 ? "" : "s"}.`);
+  };
+
+  const handleDownloadSelected = async () => {
+    const items = (translations ?? []).filter((t) => selectedIds.has(t._id));
+    if (items.length === 0) return;
+    let count = 0;
+    for (const item of items) {
+      const full = await convex.query(api.translations.getTranslation, {
+        translationId: item._id,
+      });
+      const text =
+        full?.segments
+          .filter((s) => s.status === "done" && s.translatedText)
+          .map((s) => s.translatedText)
+          .join("\n\n") ?? "";
+      if (text) {
+        downloadText(text, item.fileName, item.targetLang);
+        count += 1;
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+    }
+    if (count === 0) {
+      toast.error("No translated text yet for the selected chapters.");
+      return;
+    }
+    toast.success(`Downloading ${count} chapter${count === 1 ? "" : "s"}…`);
+  };
+
+  const handleDeleteSelected = async () => {
+    if (!confirmDeleteSelected) {
+      setConfirmDeleteSelected(true);
+      window.setTimeout(() => setConfirmDeleteSelected(false), 3000);
+      return;
+    }
+    const ids = [...selectedIds];
+    for (const id of ids) {
+      await deleteTranslation({ translationId: id });
+    }
+    if (activeId && selectedIds.has(activeId)) {
+      setActiveId(null);
+      setLocalSource(null);
+      setLocalFileName(null);
+    }
+    setConfirmDeleteSelected(false);
+    setSelectedIds(new Set());
+    toast.success(
+      `${ids.length} chapter${ids.length === 1 ? "" : "s"} removed from your catalog.`,
+    );
   };
 
   const handleImport = async () => {
@@ -678,6 +766,9 @@ export default function Dashboard() {
   const hasQueueWork = queue.some(
     (i) => i.status === "waiting" || i.status === "error",
   );
+  const allSelected =
+    filtered.length > 0 && filtered.every((t) => selectedIds.has(t._id));
+  const someSelected = selectedIds.size > 0 && !allSelected;
 
   return (
     <main className="page-surface min-h-screen text-foreground">
@@ -1453,15 +1544,113 @@ export default function Dashboard() {
                 </p>
               </div>
             ) : (
-              <ul className="mt-6 divide-y divide-border/70 border-y border-border/70">
+              <>
+                {translations && translations.length > 0 && filtered.length > 0 && (
+                  <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border/70 pb-3">
+                  <button
+                    type="button"
+                    role="checkbox"
+                    aria-checked={
+                      allSelected ? true : someSelected ? "mixed" : false
+                    }
+                    aria-label="Select all chapters"
+                    onClick={toggleSelectAll}
+                    className="flex cursor-pointer items-center gap-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    <span
+                      className={cn(
+                        "grid size-4 shrink-0 place-items-center rounded-[4px] border transition-colors",
+                        allSelected || someSelected
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-input bg-transparent",
+                      )}
+                    >
+                      {allSelected ? (
+                        <Check className="size-3.5" />
+                      ) : someSelected ? (
+                        <Minus className="size-3.5" />
+                      ) : null}
+                    </span>
+                    Select all
+                  </button>
+
+                  {selectedIds.size > 0 ? (
+                    <>
+                      <span className="text-xs text-muted-foreground">
+                        {selectedIds.size} selected
+                      </span>
+                      <div className="ml-auto flex flex-wrap items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 rounded-sm px-3 text-xs text-muted-foreground hover:text-foreground"
+                          onClick={() => void handleCopySelected()}
+                        >
+                          {selectedCopied ? (
+                            <Check className="mr-1.5 size-3.5" />
+                          ) : (
+                            <Copy className="mr-1.5 size-3.5" />
+                          )}
+                          {selectedCopied ? "Copied" : "Copy"}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8 rounded-sm border-border/80 bg-transparent px-3 text-xs shadow-none"
+                          onClick={() => void handleDownloadSelected()}
+                        >
+                          <Download className="mr-1.5 size-3.5" />
+                          Download .txt
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 rounded-sm px-3 text-xs text-destructive hover:text-destructive"
+                          onClick={() => void handleDeleteSelected()}
+                        >
+                          {confirmDeleteSelected ? (
+                            "Sure?"
+                          ) : (
+                            <>
+                              <Trash2 className="mr-1.5 size-3.5" />
+                              Delete
+                            </>
+                          )}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 rounded-sm px-3 text-xs text-muted-foreground hover:text-foreground"
+                          onClick={() => {
+                            setSelectedIds(new Set());
+                            setConfirmDeleteSelected(false);
+                          }}
+                        >
+                          Clear
+                        </Button>
+                      </div>
+                    </>
+                  ) : (
+                    <span className="text-[11px] text-muted-foreground">
+                      Tick chapters to copy, download, or delete them together.
+                    </span>
+                  )}
+                </div>
+              )}
+              <ul className="mt-3 divide-y divide-border/70 border-y border-border/70">
                 {filtered.map((t) => (
                   <li key={t._id}>
                     <div
                       role="button"
                       tabIndex={0}
                       className={cn(
-                        "group grid cursor-pointer grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1 px-2 py-3 transition-colors hover:bg-muted/50",
+                        "group grid cursor-pointer grid-cols-[auto_1fr_auto] items-center gap-x-4 gap-y-1 px-2 py-3 transition-colors hover:bg-muted/50",
                         activeId === t._id && "bg-muted/60",
+                        selectedIds.has(t._id) && "bg-muted/40",
                       )}
                       onClick={() => handleOpenViewer(t._id)}
                       onKeyDown={(e) => {
@@ -1471,6 +1660,13 @@ export default function Dashboard() {
                         }
                       }}
                     >
+                      <Checkbox
+                        checked={selectedIds.has(t._id)}
+                        onCheckedChange={() => toggleSelected(t._id)}
+                        aria-label={`Select ${t.title ?? t.fileName}`}
+                        className="shrink-0"
+                        onClick={(e) => e.stopPropagation()}
+                      />
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium">
                           {t.title ?? t.fileName}
@@ -1521,7 +1717,8 @@ export default function Dashboard() {
                     </div>
                   </li>
                 ))}
-              </ul>
+                </ul>
+              </>
             )}
           </div>
         )}
@@ -1577,20 +1774,10 @@ export default function Dashboard() {
           <DialogFooter className="flex-col items-stretch gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
             <span className="text-[11px] text-muted-foreground sm:mr-auto">
               {viewerText ? `${countWords(viewerText).toLocaleString()} words` : ""}
+              {viewer && viewer.translation.status !== "done"
+                ? ` · ${viewer.translation.completedSegments}/${viewer.translation.segmentCount} segments`
+                : ""}
             </span>
-            <Button
-              type="button"
-              variant="ghost"
-              className="rounded-sm text-muted-foreground hover:text-foreground"
-              onClick={() => {
-                const id = viewerId;
-                setViewerId(null);
-                if (id) void handleOpenInTranslator(id);
-              }}
-            >
-              <ArrowRight className="mr-2 size-3.5" />
-              Open in translator
-            </Button>
             <Button
               type="button"
               variant="ghost"
