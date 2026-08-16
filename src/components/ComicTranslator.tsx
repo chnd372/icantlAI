@@ -7,6 +7,7 @@ import {
   Copy,
   Download,
   ImagePlus,
+  Layers,
   Loader2,
   Settings2,
   Upload,
@@ -31,14 +32,25 @@ import {
 } from "@/lib/languages";
 import { cn } from "@/lib/utils";
 
+interface ComicOverlay {
+  x: number; // left / width
+  y: number; // top / height
+  w: number; // width / width
+  h: number; // height / height
+  text: string;
+}
+
 interface ComicPage {
   key: string;
   name: string;
   previewUrl: string; // object URL for display
   dataUrl: string; // compressed base64 sent to the server
+  width: number; // compressed image width
+  height: number; // compressed image height
   status: "ready" | "processing" | "done" | "error";
   ocrText?: string;
   translatedText?: string;
+  overlays?: ComicOverlay[];
   error?: string;
 }
 
@@ -62,7 +74,9 @@ function baseName(name: string) {
 }
 
 /** Downscale a comic page to a JPEG data URL small enough for OCR uploads. */
-async function compressImage(file: File): Promise<string> {
+async function compressImage(
+  file: File,
+): Promise<{ dataUrl: string; width: number; height: number }> {
   const maxDim = 1600;
   const quality = 0.85;
   let bitmap: ImageBitmap | null = null;
@@ -104,10 +118,127 @@ async function compressImage(file: File): Promise<string> {
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, w, h);
     ctx.drawImage(source, 0, 0, w, h);
-    return canvas.toDataURL("image/jpeg", quality);
+    return {
+      dataUrl: canvas.toDataURL("image/jpeg", quality),
+      width: w,
+      height: h,
+    };
   } finally {
     bitmap?.close();
   }
+}
+
+// --- Typeset overlay: draw the translated text back onto the page -----------
+
+function wrapLines(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+): string[] {
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [];
+
+  // CJK-style text without spaces: wrap by characters instead.
+  if (words.length === 1 && ctx.measureText(words[0]).width > maxWidth) {
+    const chars = Array.from(words[0]);
+    const lines: string[] = [];
+    let current = "";
+    for (const ch of chars) {
+      const next = current + ch;
+      if (ctx.measureText(next).width > maxWidth && current) {
+        lines.push(current);
+        current = ch;
+      } else {
+        current = next;
+      }
+    }
+    if (current) lines.push(current);
+    return lines;
+  }
+
+  const lines: string[] = [];
+  let current = "";
+  for (const word of words) {
+    const next = current ? `${current} ${word}` : word;
+    if (ctx.measureText(next).width > maxWidth && current) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = next;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
+
+function drawTextInBox(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+) {
+  const pad = Math.max(2, w * 0.04);
+  const maxW = Math.max(10, w - pad * 2);
+  const maxH = Math.max(10, h - pad * 2);
+  const font = () =>
+    `${Math.round(fontSize)}px 'Segoe UI', system-ui, sans-serif`;
+
+  let fontSize = Math.max(8, Math.min(h * 0.7, maxW * 0.6));
+  ctx.font = font();
+  let lines = wrapLines(ctx, text, maxW);
+  let lineH = fontSize * 1.25;
+  while (lines.length * lineH > maxH && fontSize > 8) {
+    fontSize -= 1;
+    ctx.font = font();
+    lines = wrapLines(ctx, text, maxW);
+    lineH = fontSize * 1.25;
+  }
+
+  const totalH = lines.length * lineH;
+  let ty = y + (h - totalH) / 2 + fontSize;
+  ctx.fillStyle = "#161616";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  for (const line of lines) {
+    ctx.fillText(line, x + w / 2, ty);
+    ty += lineH;
+  }
+}
+
+/** Render the page with the translated text typeset over each detected box. */
+async function renderOverlayedImage(
+  imageUrl: string,
+  overlays: ComicOverlay[],
+): Promise<string> {
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Could not load the page image"));
+    image.src = imageUrl;
+  });
+
+  const canvas = document.createElement("canvas");
+  canvas.width = img.naturalWidth;
+  canvas.height = img.naturalHeight;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas 2D is not supported here.");
+  ctx.drawImage(img, 0, 0);
+
+  for (const o of overlays) {
+    const x = o.x * canvas.width;
+    const y = o.y * canvas.height;
+    const w = o.w * canvas.width;
+    const h = o.h * canvas.height;
+    // Paper-white panel covers the original text (works best on manga's
+    // white bubbles; a first version of "inpainting").
+    ctx.fillStyle = "rgba(255, 255, 255, 0.93)";
+    ctx.fillRect(x, y, w, h);
+    drawTextInBox(ctx, o.text, x, y, w, h);
+  }
+
+  return canvas.toDataURL("image/png");
 }
 
 export function ComicTranslator({
@@ -128,6 +259,7 @@ export function ComicTranslator({
   const [running, setRunning] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [rendering, setRendering] = useState(false);
   const runningRef = useRef(false);
   const addingRef = useRef(false);
   const keyRef = useRef(0);
@@ -178,12 +310,14 @@ export function ComicTranslator({
       for (const file of files) {
         const previewUrl = URL.createObjectURL(file);
         try {
-          const dataUrl = await compressImage(file);
+          const { dataUrl, width, height } = await compressImage(file);
           loaded.push({
             key: `c-${++keyRef.current}`,
             name: file.name,
             previewUrl,
             dataUrl,
+            width,
+            height,
             status: "ready",
           });
         } catch {
@@ -233,6 +367,8 @@ export function ComicTranslator({
         try {
           const result = await translateComicPage({
             imageData: page.dataUrl,
+            imageWidth: page.width,
+            imageHeight: page.height,
             ocrMethod,
             sourceLang,
             targetLang,
@@ -246,6 +382,7 @@ export function ComicTranslator({
                     status: "done",
                     ocrText: result.ocrText,
                     translatedText: result.translatedText,
+                    overlays: result.overlays,
                   }
                 : p,
             ),
@@ -322,6 +459,46 @@ export function ComicTranslator({
       combined,
       `${label} - ${resolveLangCode(targetLang).toUpperCase()}.txt`,
     );
+  };
+
+  /** Render one page with the translated text typeset onto it (PNG). */
+  const handleDownloadPng = async (p: ComicPage) => {
+    if (!p.overlays || p.overlays.length === 0) return;
+    try {
+      // Use the original uploaded file (previewUrl) so the PNG keeps full
+      // resolution — the boxes are normalized 0..1 so they still align.
+      const png = await renderOverlayedImage(p.previewUrl, p.overlays);
+      const blob = await (await fetch(png)).blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `${pageFileBase(p.name)}.png`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Could not render the image.",
+      );
+    }
+  };
+
+  const handleDownloadAllPng = async () => {
+    const targets = donePages.filter(
+      (p) => p.overlays && p.overlays.length > 0,
+    );
+    if (targets.length === 0) return;
+    setRendering(true);
+    try {
+      for (const p of targets) {
+        await handleDownloadPng(p);
+        await new Promise((resolve) => setTimeout(resolve, 400));
+      }
+      toast.success(
+        `Downloading ${targets.length} page${targets.length === 1 ? "" : "s"} with text…`,
+      );
+    } finally {
+      setRendering(false);
+    }
   };
 
   const handleRemovePage = (key: string) => {
@@ -540,6 +717,19 @@ export function ComicTranslator({
                           <Download className="mr-1.5 size-3" />
                           .txt
                         </Button>
+                        {p.overlays && p.overlays.length > 0 && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 rounded-sm border-border/80 bg-transparent px-2 text-xs shadow-none"
+                            disabled={rendering}
+                            onClick={() => void handleDownloadPng(p)}
+                          >
+                            <Layers className="mr-1.5 size-3" />
+                            PNG + text
+                          </Button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -736,8 +926,27 @@ export function ComicTranslator({
               onClick={handleDownloadAll}
             >
               <Download className="mr-1.5 size-3.5" />
-              Download all
+              Download all .txt
             </Button>
+            {donePages.some(
+              (p) => p.overlays && p.overlays.length > 0,
+            ) && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 rounded-sm border-border/80 bg-transparent px-3 text-xs shadow-none"
+                disabled={rendering}
+                onClick={() => void handleDownloadAllPng()}
+              >
+                {rendering ? (
+                  <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                ) : (
+                  <Layers className="mr-1.5 size-3.5" />
+                )}
+                Download all PNG
+              </Button>
+            )}
             <Button
               type="button"
               variant="ghost"
