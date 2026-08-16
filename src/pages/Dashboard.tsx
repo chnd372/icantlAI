@@ -22,6 +22,7 @@ import {
   X,
 } from "lucide-react";
 
+import { ComicTranslator } from "@/components/ComicTranslator";
 import { ProvidersDialog } from "@/components/ProvidersDialog";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
@@ -102,7 +103,7 @@ function modelLabel(model: string) {
   return model === "imported" ? "Imported" : model;
 }
 
-type Tab = "translate" | "catalog";
+type Tab = "translate" | "comic" | "catalog";
 
 export default function Dashboard() {
   const { user, signOut } = useAuth();
@@ -925,6 +926,18 @@ export default function Dashboard() {
           </button>
           <button
             type="button"
+            onClick={() => setTab("comic")}
+            className={cn(
+              "-mb-px border-b-2 px-1 pb-3 text-sm transition-colors",
+              tab === "comic"
+                ? "border-foreground font-medium text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground",
+            )}
+          >
+            Comic
+          </button>
+          <button
+            type="button"
             onClick={() => setTab("catalog")}
             className={cn(
               "-mb-px flex items-center gap-2 border-b-2 px-1 pb-3 text-sm transition-colors",
@@ -1487,7 +1500,7 @@ export default function Dashboard() {
               )}
             </section>
           </div>
-        ) : (
+        ) : tab === "catalog" ? (
           /* Catalog */
           <div className="pt-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1721,6 +1734,12 @@ export default function Dashboard() {
               </>
             )}
           </div>
+        ) : (
+          <ComicTranslator
+            providers={providers}
+            selectedProviderId={selectedProviderId}
+            onOpenProviders={() => setProvidersOpen(true)}
+          />
         )}
       </div>
 

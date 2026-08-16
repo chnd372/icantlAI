@@ -13,7 +13,8 @@ interface CallOptions {
   apiKey: string;
   model: string;
   system: string;
-  user: string;
+  /** Plain text, or a multimodal content array (e.g. vision messages). */
+  user: string | unknown[];
   maxTokens: number;
 }
 
@@ -101,7 +102,7 @@ async function callAnthropic(options: CallOptions): Promise<string> {
   );
 }
 
-async function complete(
+export async function complete(
   providerType: "openai" | "anthropic",
   options: CallOptions,
 ): Promise<string> {
@@ -131,7 +132,7 @@ function baseUrlHint(baseUrl: string, status: number): string {
 }
 
 /** List model IDs available at an OpenAI- or Anthropic-compatible endpoint. */
-async function listModels(
+export async function listModels(
   providerType: "openai" | "anthropic",
   baseUrl: string,
   apiKey: string,
@@ -176,7 +177,7 @@ async function listModels(
 }
 
 /** Prefer a chat-capable model over embeddings/speech/image models. */
-function pickChatModel(models: string[]): string | undefined {
+export function pickChatModel(models: string[]): string | undefined {
   const preferred = models.filter(
     (m) =>
       !/(embed|whisper|tts|speech|audio|transcri|image|dall|moderation|rerank)/i.test(
