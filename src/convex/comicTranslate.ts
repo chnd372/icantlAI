@@ -142,7 +142,10 @@ async function extractViaOcrSpace(
   const form = new URLSearchParams();
   form.set("apikey", apiKey);
   form.set("language", ocrSpaceLanguage(sourceLang));
-  form.set("base64Image", base64FromDataUrl(imageData));
+  // OCR.space expects the FULL data URI (with the data:image/...;base64,
+  // prefix) — sending the raw base64 alone triggers E501 "Invalid base64
+  // Data URI".
+  form.set("base64Image", imageData);
   // Overlay required: the response then includes word coordinates.
   form.set("isOverlayRequired", "true");
   form.set("scale", "true");
